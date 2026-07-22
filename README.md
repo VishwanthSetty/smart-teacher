@@ -1,2 +1,2 @@
 # smart-teacher
-smart-teacher
+smart-teacher application
