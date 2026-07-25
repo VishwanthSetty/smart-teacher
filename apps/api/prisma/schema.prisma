@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  SCHOOL_ADMIN
+  ADMIN
+  TEACHER
+}
+
+enum SchoolStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+// Placeholder for future billing; no billing logic exists in v1.
+enum Plan {
+  FREE
+  BASIC
+  PRO
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+}
+
+model School {
+  id           String       @id @default(cuid())
+  name         String
+  slug         String       @unique
+  academicYear String
+  status       SchoolStatus @default(ACTIVE)
+  plan         Plan         @default(FREE)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  users        User[]
+}
+
+model User {
+  id                   String     @id @default(cuid())
+  email                String
+  passwordHash         String?
+  name                 String
+  role                 Role       @default(TEACHER)
+  status               UserStatus @default(ACTIVE)
+  refreshTokenHash     String?
+  inviteTokenHash      String?
+  inviteTokenExpiresAt DateTime?
+  schoolId             String?
+  school               School?    @relation(fields: [schoolId], references: [id])
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  // Email is unique per tenant, not globally. Platform users (SUPER_ADMIN) have a
+  // null schoolId; a partial unique index in the migration enforces their uniqueness,
+  // since Postgres treats NULLs as distinct in composite unique constraints.
+  @@unique([schoolId, email])
+}
