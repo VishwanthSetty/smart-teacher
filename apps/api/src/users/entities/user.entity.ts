@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Role } from '@prisma/client';
+import { Role, UserStatus } from '@prisma/client';
 
 export class UserEntity {
   @ApiProperty()
@@ -13,6 +13,12 @@ export class UserEntity {
 
   @ApiProperty({ enum: Role })
   role!: Role;
+
+  @ApiProperty({ enum: UserStatus })
+  status!: UserStatus;
+
+  @ApiProperty({ nullable: true, type: Date })
+  activatedAt!: Date | null;
 
   @ApiProperty()
   createdAt!: Date;

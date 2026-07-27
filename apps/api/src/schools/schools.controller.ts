@@ -1,8 +1,6 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { BypassTenantScope } from '../tenancy/decorators/bypass-tenant-scope.decorator';
 import { SchoolsService } from './schools.service';
@@ -15,7 +13,6 @@ import { PaginatedSchoolsEntity } from './entities/paginated-schools.entity';
 @ApiTags('admin')
 @ApiBearerAuth()
 @Controller('admin/schools')
-@UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.SUPER_ADMIN)
 @BypassTenantScope()
 export class SchoolsController {

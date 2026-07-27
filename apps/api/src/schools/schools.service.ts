@@ -1,30 +1,25 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, Role, SchoolStatus, UserStatus } from '@prisma/client';
-import { randomBytes } from 'crypto';
-import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
+import { InvitesService } from '../invites/invites.service';
 import { CreateSchoolDto } from './dto/create-school.dto';
 import { UpdateSchoolDto } from './dto/update-school.dto';
 import { ListSchoolsQueryDto } from './dto/list-schools-query.dto';
 import { SchoolEntity } from './entities/school.entity';
 import { PaginatedSchoolsEntity } from './entities/paginated-schools.entity';
 
-// Invite tokens let F-04 complete the pending admin's onboarding; they expire after a week.
-const INVITE_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const BCRYPT_ROUNDS = 10;
-
 @Injectable()
 export class SchoolsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mailService: MailService,
+    private readonly invitesService: InvitesService,
   ) {}
 
   async create(dto: CreateSchoolDto): Promise<SchoolEntity> {
-    const inviteToken = randomBytes(32).toString('hex');
-    const inviteTokenHash = await bcrypt.hash(inviteToken, BCRYPT_ROUNDS);
-    const inviteTokenExpiresAt = new Date(Date.now() + INVITE_TOKEN_TTL_MS);
+    const { token: inviteToken, tokenHash: inviteTokenHash, expiresAt: inviteTokenExpiresAt } =
+      this.invitesService.mintToken();
 
     let school;
     try {
@@ -60,19 +55,36 @@ export class SchoolsService {
       throw error;
     }
 
-    await this.mailService.sendSchoolAdminInvite({
+    await this.mailService.sendUserInvite({
       email: dto.adminEmail,
       name: dto.adminName,
+      role: Role.SCHOOL_ADMIN,
       schoolName: school.name,
       schoolSlug: school.slug,
       inviteToken,
     });
 
-    return SchoolEntity.fromModel(school);
+    return SchoolEntity.fromModel(school, dto.adminEmail);
   }
 
   async findAll(query: ListSchoolsQueryDto): Promise<PaginatedSchoolsEntity> {
-    const where: Prisma.SchoolWhereInput = query.status ? { status: query.status } : {};
+    const search = query.search?.trim();
+    const where: Prisma.SchoolWhereInput = {
+      ...(query.status ? { status: query.status } : {}),
+      ...(search
+        ? {
+            OR: [
+              { name: { contains: search, mode: 'insensitive' } },
+              { slug: { contains: search, mode: 'insensitive' } },
+              {
+                users: {
+                  some: { role: Role.SCHOOL_ADMIN, email: { contains: search, mode: 'insensitive' } },
+                },
+              },
+            ],
+          }
+        : {}),
+    };
     const skip = (query.page - 1) * query.limit;
 
     const [schools, total] = await this.prisma.$transaction([
@@ -81,12 +93,21 @@ export class SchoolsService {
         skip,
         take: query.limit,
         orderBy: { createdAt: 'desc' },
+        // Oldest SCHOOL_ADMIN is treated as the school's primary admin for display.
+        include: {
+          users: {
+            where: { role: Role.SCHOOL_ADMIN },
+            orderBy: { createdAt: 'asc' },
+            take: 1,
+            select: { email: true },
+          },
+        },
       }),
       this.prisma.school.count({ where }),
     ]);
 
     return {
-      data: schools.map((school) => SchoolEntity.fromModel(school)),
+      data: schools.map(({ users, ...school }) => SchoolEntity.fromModel(school, users[0]?.email ?? null)),
       meta: {
         page: query.page,
         limit: query.limit,
@@ -115,15 +136,21 @@ export class SchoolsService {
 
       // Suspending forces every tenant user to re-authenticate: their next refresh fails.
       if (suspending) {
-        await tx.user.updateMany({
-          where: { schoolId: id },
-          data: { refreshTokenHash: null },
+        await tx.refreshToken.updateMany({
+          where: { user: { schoolId: id }, revokedAt: null },
+          data: { revokedAt: new Date() },
         });
       }
 
       return next;
     });
 
-    return SchoolEntity.fromModel(updated);
+    const admin = await this.prisma.user.findFirst({
+      where: { schoolId: id, role: Role.SCHOOL_ADMIN },
+      orderBy: { createdAt: 'asc' },
+      select: { email: true },
+    });
+
+    return SchoolEntity.fromModel(updated, admin?.email ?? null);
   }
 }

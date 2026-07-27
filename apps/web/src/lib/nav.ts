@@ -1,0 +1,99 @@
+import {
+  BookOpen,
+  Building2,
+  CalendarDays,
+  GraduationCap,
+  LayoutDashboard,
+  Layers,
+  Library,
+  Settings,
+  ShieldCheck,
+  SlidersHorizontal,
+  Users,
+  Video,
+  type LucideIcon,
+} from 'lucide-react';
+import { Role } from '@smart-teacher/shared-types';
+
+export interface NavItem {
+  label: string;
+  href: string;
+  icon: LucideIcon;
+  roles: readonly Role[];
+}
+
+const ALL_ROLES = [Role.SUPER_ADMIN, Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] as const;
+
+// Presentation only — this decides what a role is *shown*, never what it may *do*.
+// Each page re-checks the actor's role, and the API is the real authorization boundary;
+// hiding a link here would be worthless on its own.
+export const NAV_ITEMS: readonly NavItem[] = [
+  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ALL_ROLES },
+  { label: 'Schools', href: '/dashboard/schools', icon: Building2, roles: [Role.SUPER_ADMIN] },
+  {
+    label: 'Content Library',
+    href: '/dashboard/content-library',
+    icon: Library,
+    roles: [Role.SUPER_ADMIN],
+  },
+  {
+    label: 'Grade Levels & Subjects',
+    href: '/dashboard/taxonomy',
+    icon: Layers,
+    roles: [Role.SUPER_ADMIN],
+  },
+  {
+    label: 'School Entitlements',
+    href: '/dashboard/entitlements',
+    icon: ShieldCheck,
+    roles: [Role.SUPER_ADMIN],
+  },
+  {
+    label: 'Platform Settings',
+    href: '/dashboard/platform-settings',
+    icon: SlidersHorizontal,
+    roles: [Role.SUPER_ADMIN],
+  },
+  {
+    label: 'Students',
+    href: '/dashboard/students',
+    icon: GraduationCap,
+    roles: [Role.SCHOOL_ADMIN, Role.TEACHER],
+  },
+  { label: 'Teachers', href: '/dashboard/teachers', icon: Users, roles: [Role.SCHOOL_ADMIN] },
+  {
+    label: 'Classes & Sections',
+    href: '/dashboard/classes',
+    icon: BookOpen,
+    roles: [Role.SCHOOL_ADMIN, Role.TEACHER],
+  },
+  {
+    label: 'Timetable',
+    href: '/dashboard/timetable',
+    icon: CalendarDays,
+    roles: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT],
+  },
+  {
+    label: 'Videos',
+    href: '/dashboard/videos',
+    icon: Video,
+    roles: [Role.TEACHER, Role.STUDENT],
+  },
+  {
+    label: 'Settings',
+    href: '/dashboard/settings',
+    icon: Settings,
+    roles: [Role.SCHOOL_ADMIN],
+  },
+];
+
+export function navItemsForRole(role: Role): NavItem[] {
+  return NAV_ITEMS.filter((item) => item.roles.includes(role));
+}
+
+// Single source of truth for the per-route role gate, so a stub page's redirect can
+// never drift from the nav item that links to it.
+export function canRoleAccess(role: Role, href: string): boolean {
+  const item = NAV_ITEMS.find((candidate) => candidate.href === href);
+  return item ? item.roles.includes(role) : false;
+}

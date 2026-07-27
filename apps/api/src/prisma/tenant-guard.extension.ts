@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { MissingTenantContextError } from './tenant-guard.errors';
+import { canReachTenantScoped } from './tenant-relations';
 import { isTenantScoped } from './tenant-scoped-models';
 import { applyTenantScope, type PrismaArgs } from './tenant-scope.util';
 import type { TenantContextService } from '../tenancy/tenant-context.service';
@@ -15,27 +16,33 @@ interface AllOperationsArgs {
 // going through Prisma's `$extends`/`defineExtension` plumbing.
 export function tenantGuardOperationHandler(tenantContext: TenantContextService) {
   return async ({ model, operation, args, query }: AllOperationsArgs): Promise<unknown> => {
-    if (!isTenantScoped(model)) {
-      return query(args);
-    }
-
     const ctx = tenantContext.getOrUndefined();
     if (ctx?.bypassTenantScope) {
       return query(args);
     }
 
-    if (!ctx?.isPopulated || ctx.schoolId === null) {
+    // A query rooted at a model with no path to a tenant-scoped model can neither read
+    // nor write tenant data, whatever its args say — the only genuinely free pass.
+    if (!canReachTenantScoped(model)) {
+      return query(args);
+    }
+
+    const schoolId = ctx?.isPopulated ? ctx.schoolId : null;
+
+    // A tenant-scoped root always needs a tenant. A non-scoped root only needs one if its
+    // args actually reach a scoped relation, which the nested walkers decide for themselves.
+    if (isTenantScoped(model) && schoolId === null) {
       throw new MissingTenantContextError(model, operation);
     }
 
-    return query(applyTenantScope(model, operation, args, ctx.schoolId));
+    return query(applyTenantScope(model, operation, args, schoolId));
   };
 }
 
 // Row-Level Security is deferred to a follow-up (F-02b): this extension is the only
 // line of defence today, and it only covers the Prisma Client query API. `$queryRaw`
 // / `$executeRaw` bypass it entirely — do not use raw SQL against tenant-scoped tables
-// until RLS lands.
+// until RLS lands. `raw-sql-guard.spec.ts` fails the build if that rule is broken.
 export function tenantGuardExtension(tenantContext: TenantContextService) {
   return Prisma.defineExtension({
     name: 'tenantGuard',

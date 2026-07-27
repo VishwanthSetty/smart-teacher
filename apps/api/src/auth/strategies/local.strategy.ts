@@ -2,7 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Request } from 'express';
 import { Strategy } from 'passport-local';
-import { AuthService } from '../auth.service';
+import { AuthService, INVALID_CREDENTIALS_MESSAGE } from '../auth.service';
 
 @Injectable()
 export class LocalStrategy extends PassportStrategy(Strategy) {
@@ -14,9 +14,12 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
 
   async validate(req: Request, email: string, password: string) {
     const schoolSlug = typeof req.body?.schoolSlug === 'string' ? req.body.schoolSlug : undefined;
-    const user = await this.authService.validateUser(email, password, schoolSlug);
+    const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+    const user = await this.authService.validateUser(email, password, ip, schoolSlug);
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
+      // Identical for unknown-email and wrong-password — never let a caller
+      // distinguish which one failed.
+      throw new UnauthorizedException(INVALID_CREDENTIALS_MESSAGE);
     }
     return user;
   }

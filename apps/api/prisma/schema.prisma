@@ -10,8 +10,8 @@ datasource db {
 enum Role {
   SUPER_ADMIN
   SCHOOL_ADMIN
-  ADMIN
   TEACHER
+  STUDENT
 }
 
 enum SchoolStatus {
@@ -29,37 +29,165 @@ enum Plan {
 enum UserStatus {
   PENDING
   ACTIVE
+  DISABLED
+}
+
+// Retirement is reversible and never deletes: a retired subject keeps every video,
+// entitlement and (from F-08) timetable slot that already references it readable, while
+// refusing new references. Retiring is blocked outright while any reference exists.
+enum SubjectStatus {
+  ACTIVE
+  RETIRED
 }
 
 model School {
-  id           String       @id @default(cuid())
+  id           String                     @id @default(cuid())
   name         String
-  slug         String       @unique
+  slug         String                     @unique
   academicYear String
-  status       SchoolStatus @default(ACTIVE)
-  plan         Plan         @default(FREE)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  status       SchoolStatus               @default(ACTIVE)
+  plan         Plan                       @default(FREE)
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
   users        User[]
+  entitlements SchoolContentEntitlement[]
 }
 
 model User {
-  id                   String     @id @default(cuid())
+  id                   String         @id @default(cuid())
   email                String
   passwordHash         String?
   name                 String
-  role                 Role       @default(TEACHER)
-  status               UserStatus @default(ACTIVE)
-  refreshTokenHash     String?
-  inviteTokenHash      String?
+  role                 Role           @default(TEACHER)
+  status               UserStatus     @default(ACTIVE)
+  // sha256 hex of the raw invite token — unique so the token alone is a direct lookup key.
+  inviteTokenHash      String?        @unique
   inviteTokenExpiresAt DateTime?
+  // sha256 hex of the raw password-reset token — unique for the same direct-lookup
+  // reason as the invite hash. Nulling it on redemption is what makes a link single-use.
+  resetTokenHash       String?        @unique
+  resetTokenExpiresAt  DateTime?
+  activatedAt          DateTime?
   schoolId             String?
-  school               School?    @relation(fields: [schoolId], references: [id])
-  createdAt            DateTime   @default(now())
-  updatedAt            DateTime   @updatedAt
+  // Restrict, not SetNull: SetNull would launder a deleted school's users into the
+  // platform (null-school) scope, where tenant scoping no longer applies to them at all.
+  school               School?        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  refreshTokens        RefreshToken[]
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
   // Email is unique per tenant, not globally. Platform users (SUPER_ADMIN) have a
   // null schoolId; a partial unique index in the migration enforces their uniqueness,
   // since Postgres treats NULLs as distinct in composite unique constraints.
   @@unique([schoolId, email])
+}
+
+// Only a ROTATED revocation is eligible for the reuse-grace window (the same
+// token presented twice in a legitimate rotation race). Any other reason means
+// the token must never be revived, no matter how recently it was revoked.
+enum RefreshTokenRevokeReason {
+  ROTATED
+  REUSE_DETECTED
+  LOGGED_OUT
+  PASSWORD_RESET
+}
+
+// Auth infrastructure keyed by user, not tenant — deliberately NOT in
+// TENANT_SCOPED_MODELS. Platform users (SUPER_ADMIN) have a null schoolId, and
+// every access path here runs pre-authentication via runWithSystemBypass.
+model RefreshToken {
+  id                String                    @id @default(cuid()) // also the JWT's jti claim
+  tokenHash         String // sha256 hex of the full refresh JWT
+  familyId          String // shared across a rotation lineage; revoked together on reuse
+  userId            String
+  user              User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  revokeReason      RefreshTokenRevokeReason?
+  replacedByTokenId String?
+  createdAt         DateTime                  @default(now())
+
+  @@index([familyId])
+  @@index([userId])
+}
+
+// Sliding-window failed-login tracking for lockout. Rows older than the
+// window are opportunistically pruned by LoginThrottleService, not a cron.
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String // lockout key: "<schoolSlug>:<email>", or plain email for platform users
+  ipAddress String
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([ipAddress, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Platform content — the reviewed exception to "every table carries school_id".
+//
+// GradeLevel, Subject and Video are authored once for the whole platform and are
+// deliberately absent from TENANT_SCOPED_MODELS: there is no tenant column to scope
+// them by. A school never reads them by tenant scoping. Every school-facing read goes
+// through SchoolContentEntitlement below, which *is* tenant-scoped — see
+// ContentEntitlementsService and VideosAccessPolicy.
+// ---------------------------------------------------------------------------
+
+model GradeLevel {
+  id           String                     @id @default(cuid())
+  name         String                     @unique
+  rank         Int                        @unique // display order, e.g. 5 for "Grade 5"
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+  videos       Video[]
+  entitlements SchoolContentEntitlement[]
+}
+
+model Subject {
+  id           String                     @id @default(cuid())
+  name         String
+  // The canonical platform-wide handle every video, entitlement and timetable slot
+  // joins on. Immutable once created — nothing may PATCH it.
+  code         String                     @unique
+  status       SubjectStatus              @default(ACTIVE)
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+  videos       Video[]
+  entitlements SchoolContentEntitlement[]
+}
+
+model Video {
+  id           String     @id @default(cuid())
+  title        String
+  description  String?
+  // Provider-agnostic handle, resolved to a playback URL by the video adapter (F-19).
+  // Never store a signed URL: it would outlive the entitlement check that produced it.
+  externalId   String
+  durationSecs Int?
+  gradeLevelId String
+  gradeLevel   GradeLevel @relation(fields: [gradeLevelId], references: [id])
+  subjectId    String
+  subject      Subject    @relation(fields: [subjectId], references: [id])
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  // The entitlement key — every school-facing read filters on this pair.
+  @@index([gradeLevelId, subjectId])
+}
+
+// The one table that decides which global content a school may see, and therefore
+// tenant-scoped with a NOT NULL schoolId. Cascade on school delete: an entitlement
+// has no meaning without its school, and unlike User there is no platform-level row.
+model SchoolContentEntitlement {
+  id           String     @id @default(cuid())
+  schoolId     String
+  school       School     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  gradeLevelId String
+  gradeLevel   GradeLevel @relation(fields: [gradeLevelId], references: [id])
+  subjectId    String
+  subject      Subject    @relation(fields: [subjectId], references: [id])
+  grantedAt    DateTime   @default(now())
+
+  @@unique([schoolId, gradeLevelId, subjectId])
+  @@index([schoolId])
 }

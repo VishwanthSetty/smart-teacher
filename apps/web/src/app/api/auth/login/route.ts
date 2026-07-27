@@ -5,7 +5,13 @@ import { setSessionCookies } from '@/lib/session';
 export async function POST(request: NextRequest) {
   try {
     const { email, password, schoolSlug } = await request.json();
-    const { accessToken, refreshToken } = await apiLogin(email, password, schoolSlug || undefined);
+    const clientIp = request.headers.get('x-forwarded-for') ?? request.ip;
+    const { accessToken, refreshToken } = await apiLogin(
+      email,
+      password,
+      schoolSlug || undefined,
+      clientIp ?? undefined,
+    );
     setSessionCookies(accessToken, refreshToken);
     return NextResponse.json({ ok: true });
   } catch (error) {

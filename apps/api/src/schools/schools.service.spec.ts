@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Plan, Prisma, SchoolStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
+import { InvitesService } from '../invites/invites.service';
 import { SchoolsService } from './schools.service';
 
 const baseSchool = {
@@ -26,10 +27,12 @@ describe('SchoolsService', () => {
       findUnique: jest.Mock;
       update: jest.Mock;
     };
-    user: { create: jest.Mock; updateMany: jest.Mock };
+    user: { create: jest.Mock; updateMany: jest.Mock; findFirst: jest.Mock };
+    refreshToken: { updateMany: jest.Mock };
     $transaction: jest.Mock;
   };
-  let mail: { sendSchoolAdminInvite: jest.Mock };
+  let mail: { sendUserInvite: jest.Mock };
+  let invites: { mintToken: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -40,16 +43,25 @@ describe('SchoolsService', () => {
         findUnique: jest.fn(),
         update: jest.fn(),
       },
-      user: { create: jest.fn(), updateMany: jest.fn() },
+      user: { create: jest.fn(), updateMany: jest.fn(), findFirst: jest.fn() },
+      refreshToken: { updateMany: jest.fn() },
       $transaction: jest.fn((arg) => (typeof arg === 'function' ? arg(prisma) : Promise.all(arg))),
     };
-    mail = { sendSchoolAdminInvite: jest.fn().mockResolvedValue(undefined) };
+    mail = { sendUserInvite: jest.fn().mockResolvedValue(undefined) };
+    invites = {
+      mintToken: jest.fn().mockReturnValue({
+        token: 'raw-invite-token',
+        tokenHash: 'hashed-invite-token',
+        expiresAt: new Date('2026-08-01T00:00:00.000Z'),
+      }),
+    };
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
         SchoolsService,
         { provide: PrismaService, useValue: prisma },
         { provide: MailService, useValue: mail },
+        { provide: InvitesService, useValue: invites },
       ],
     }).compile();
 
@@ -74,7 +86,7 @@ describe('SchoolsService', () => {
         data: expect.objectContaining({ role: 'SCHOOL_ADMIN', status: 'PENDING', schoolId: 'school-1' }),
       }),
     );
-    expect(mail.sendSchoolAdminInvite).toHaveBeenCalledWith(
+    expect(mail.sendUserInvite).toHaveBeenCalledWith(
       expect.objectContaining({ email: 'head@springfield.edu', schoolSlug: 'springfield-high' }),
     );
   });
@@ -93,28 +105,32 @@ describe('SchoolsService', () => {
         adminName: 'A',
       }),
     ).rejects.toBeInstanceOf(ConflictException);
-    expect(mail.sendSchoolAdminInvite).not.toHaveBeenCalled();
+    expect(mail.sendUserInvite).not.toHaveBeenCalled();
   });
 
-  it('returns paginated results with computed metadata', async () => {
-    prisma.school.findMany.mockResolvedValue([baseSchool]);
+  it('returns paginated results with computed metadata and the primary admin email', async () => {
+    prisma.school.findMany.mockResolvedValue([
+      { ...baseSchool, users: [{ email: 'head@springfield.edu' }] },
+    ]);
     prisma.school.count.mockResolvedValue(3);
 
     const result = await service.findAll({ page: 1, limit: 2 });
 
     expect(result.data).toHaveLength(1);
+    expect(result.data[0]).toEqual(expect.objectContaining({ adminEmail: 'head@springfield.edu' }));
     expect(result.meta).toEqual({ page: 1, limit: 2, total: 3, totalPages: 2 });
   });
 
-  it('nulls tenant refresh tokens when suspending a school', async () => {
+  it('revokes tenant refresh tokens when suspending a school', async () => {
     prisma.school.findUnique.mockResolvedValue(baseSchool);
     prisma.school.update.mockResolvedValue({ ...baseSchool, status: SchoolStatus.SUSPENDED });
+    prisma.user.findFirst.mockResolvedValue({ email: 'head@springfield.edu' });
 
     await service.update('school-1', { status: SchoolStatus.SUSPENDED });
 
-    expect(prisma.user.updateMany).toHaveBeenCalledWith({
-      where: { schoolId: 'school-1' },
-      data: { refreshTokenHash: null },
+    expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: { user: { schoolId: 'school-1' }, revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
     });
   });
 

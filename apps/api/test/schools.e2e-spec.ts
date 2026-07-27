@@ -6,7 +6,7 @@ import { AppModule } from '../src/app.module';
 describe('Schools + tenant provisioning (e2e)', () => {
   let app: INestApplication;
   let superAdminToken: string;
-  let adminToken: string;
+  let schoolAdminToken: string;
   const suffix = Date.now();
 
   async function login(email: string, password: string, schoolSlug?: string): Promise<string> {
@@ -29,7 +29,7 @@ describe('Schools + tenant provisioning (e2e)', () => {
     await app.init();
 
     superAdminToken = await login('superadmin@smartteacher.dev', 'Passw0rd!');
-    adminToken = await login('admin@smartteacher.dev', 'Passw0rd!', 'demo-school');
+    schoolAdminToken = await login('admin@smartteacher.dev', 'Passw0rd!', 'demo-school');
   });
 
   afterAll(async () => {
@@ -113,12 +113,14 @@ describe('Schools + tenant provisioning (e2e)', () => {
         adminName: 'Shared Admin',
       })
       .expect(201);
-  });
+    // Two provisioning calls, and each one sends a real invite email over SMTP (~3.5s).
+    // Jest's 5s default is not enough for the pair.
+  }, 20000);
 
-  it('forbids ADMIN from reaching admin/schools', async () => {
+  it('forbids SCHOOL_ADMIN from reaching admin/schools', async () => {
     await request(app.getHttpServer())
       .get('/admin/schools')
-      .set('Authorization', `Bearer ${adminToken}`)
+      .set('Authorization', `Bearer ${schoolAdminToken}`)
       .expect(403);
   });
 

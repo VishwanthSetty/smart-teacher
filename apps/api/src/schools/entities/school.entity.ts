@@ -20,10 +20,15 @@ export class SchoolEntity {
   @ApiProperty({ enum: Plan })
   plan!: Plan;
 
+  @ApiProperty({ nullable: true })
+  adminEmail!: string | null;
+
   @ApiProperty()
   createdAt!: Date;
 
-  static fromModel(school: School): SchoolEntity {
+  // adminEmail is on User (the school's SCHOOL_ADMIN), not School itself, so callers
+  // resolve it separately and pass it in rather than this doing its own Prisma lookup.
+  static fromModel(school: School, adminEmail: string | null): SchoolEntity {
     return {
       id: school.id,
       name: school.name,
@@ -31,6 +36,7 @@ export class SchoolEntity {
       academicYear: school.academicYear,
       status: school.status,
       plan: school.plan,
+      adminEmail,
       createdAt: school.createdAt,
     };
   }

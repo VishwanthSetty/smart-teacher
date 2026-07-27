@@ -65,12 +65,15 @@ npm run dev
 
 ## Seeded accounts
 
-| Email | Password | Role |
-| --- | --- | --- |
-| admin@smartteacher.dev | Passw0rd! | ADMIN |
-| teacher@smartteacher.dev | Passw0rd! | TEACHER |
+| Email | Password | Role | School |
+| --- | --- | --- | --- |
+| superadmin@smartteacher.dev | Passw0rd! | SUPER_ADMIN | none (platform) |
+| admin@smartteacher.dev | Passw0rd! | SCHOOL_ADMIN | demo-school |
+| teacher@smartteacher.dev | Passw0rd! | TEACHER | demo-school |
+| student@smartteacher.dev | Passw0rd! | STUDENT | demo-school |
+| admin-b@smartteacher.dev | Passw0rd! | SCHOOL_ADMIN | demo-school-b |
 
-Log in at `/login` on the web app. The dashboard shows the current user's name and role. `GET /admin/users` on the API demonstrates RBAC: it returns data for the ADMIN account and a 403 for the TEACHER account.
+Log in at `/login` on the web app. The dashboard shows the current user's name and role. `GET /admin/users` on the API demonstrates RBAC: it returns data for the SCHOOL_ADMIN account and a 403 for the TEACHER/STUDENT accounts. Every route's role requirements are enforced server-side by a global guard (deny-by-default) and are exhaustively listed in `apps/api/test/rbac-matrix.e2e-spec.ts`.
 
 ## Scripts
 
@@ -81,7 +84,7 @@ Log in at `/login` on the web app. The dashboard shows the current user's name a
 | `npm run lint` | Lint all apps |
 | `npm run test:e2e` | Run the API's e2e auth/RBAC smoke test |
 | `npm run db:migrate` | Apply Prisma migrations |
-| `npm run db:seed` | Seed the ADMIN/TEACHER test users |
+| `npm run db:seed` | Seed the SUPER_ADMIN/SCHOOL_ADMIN/TEACHER/STUDENT test users |
 | `npm run docker:up` / `docker:down` | Start/stop the full Docker stack (Postgres + api + web) |
 | `docker compose up -d --build` | Rebuild images and start the full stack |
 | `docker compose up -d postgres` | Start Postgres only (for the local dev workflow) |

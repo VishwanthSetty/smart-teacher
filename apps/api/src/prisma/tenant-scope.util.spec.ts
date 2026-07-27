@@ -1,4 +1,9 @@
-import { TenantMismatchError, UnsupportedTenantOperationError } from './tenant-guard.errors';
+import {
+  MissingTenantContextError,
+  TenantMismatchError,
+  UnsupportedTenantNestedOperationError,
+  UnsupportedTenantOperationError,
+} from './tenant-guard.errors';
 import { applyTenantScope } from './tenant-scope.util';
 
 const SCHOOL_A = 'school-a';
@@ -119,5 +124,141 @@ describe('applyTenantScope', () => {
 
   it('throws UnsupportedTenantOperationError for an operation it does not recognize', () => {
     expect(() => applyTenantScope('User', 'fields', {}, SCHOOL_A)).toThrow(UnsupportedTenantOperationError);
+  });
+});
+
+// Prisma dispatches a query under its *root* model only, so School.include.users would
+// otherwise return every tenant's users. These cover the relation hops the root-level
+// rules above never see.
+describe('applyTenantScope — nested relations', () => {
+  describe('reads', () => {
+    it('scopes a to-many include hanging off a non-tenant-scoped root', () => {
+      const result = applyTenantScope(
+        'School',
+        'findUnique',
+        { where: { id: 'school-b' }, include: { users: true } },
+        SCHOOL_A,
+      );
+
+      expect(result.include).toEqual({ users: { where: { AND: [{}, { schoolId: SCHOOL_A }] } } });
+    });
+
+    it('preserves an existing nested where instead of replacing it', () => {
+      const result = applyTenantScope(
+        'School',
+        'findMany',
+        { include: { users: { where: { role: 'SCHOOL_ADMIN' } } } },
+        SCHOOL_A,
+      );
+
+      expect(result.include).toEqual({
+        users: { where: { AND: [{ role: 'SCHOOL_ADMIN' }, { schoolId: SCHOOL_A }] } },
+      });
+    });
+
+    it('scopes a relation reached through select just as it does through include', () => {
+      const result = applyTenantScope('School', 'findMany', { select: { users: true } }, SCHOOL_A);
+
+      expect(result.select).toEqual({ users: { where: { AND: [{}, { schoolId: SCHOOL_A }] } } });
+    });
+
+    it('leaves a relation into a non-tenant-scoped model exactly as written', () => {
+      const result = applyTenantScope(
+        'User',
+        'findUnique',
+        { where: { id: 'user-1' }, include: { school: true } },
+        SCHOOL_A,
+      );
+
+      expect(result.include).toEqual({ school: true });
+    });
+
+    it('rejects a to-one include into a tenant-scoped model, which takes no where to filter on', () => {
+      expect(() =>
+        applyTenantScope('RefreshToken', 'findMany', { include: { user: true } }, SCHOOL_A),
+      ).toThrow(UnsupportedTenantNestedOperationError);
+    });
+
+    it('scopes an existential relation filter inside where', () => {
+      const result = applyTenantScope(
+        'School',
+        'findMany',
+        { where: { users: { some: { email: 'rival@example.com' } } } },
+        SCHOOL_A,
+      );
+
+      expect(result.where).toEqual({
+        users: { some: { AND: [{ email: 'rival@example.com' }, { schoolId: SCHOOL_A }] } },
+      });
+    });
+
+    it('rejects an `every` relation filter, which AND-ing schoolId would silently reinterpret', () => {
+      expect(() =>
+        applyTenantScope('School', 'findMany', { where: { users: { every: { role: 'TEACHER' } } } }, SCHOOL_A),
+      ).toThrow(UnsupportedTenantNestedOperationError);
+    });
+
+    it('demands a tenant only once a query actually reaches a tenant-scoped relation', () => {
+      expect(() => applyTenantScope('School', 'findMany', { where: { slug: 'demo' } }, null)).not.toThrow();
+
+      expect(() => applyTenantScope('School', 'findMany', { include: { users: true } }, null)).toThrow(
+        MissingTenantContextError,
+      );
+    });
+  });
+
+  describe('writes', () => {
+    // A nested write takes its tenant from the row it hangs off. With a non-tenant-scoped
+    // parent the guard cannot pin that row down — `where: { id: <school B> }` is a
+    // perfectly valid School filter — so there is no rewrite that makes the child safe.
+    it.each(['create', 'createMany', 'connect', 'connectOrCreate', 'update', 'updateMany', 'deleteMany'])(
+      'refuses a nested %s into a tenant-scoped model from a parent that is not tenant-scoped',
+      (verb) => {
+        expect(() =>
+          applyTenantScope(
+            'School',
+            'update',
+            { where: { id: 'school-b' }, data: { users: { [verb]: { id: 'user-1' } } } },
+            SCHOOL_A,
+          ),
+        ).toThrow(UnsupportedTenantNestedOperationError);
+      },
+    );
+
+    it('still refuses the nested write when the parent happens to be the current tenant', () => {
+      // The guard rewrites args; it cannot read the database to learn which school the
+      // parent row is. Allowing this shape based on the literal in `where` would be a
+      // rule that holds only for the simplest possible filter.
+      expect(() =>
+        applyTenantScope(
+          'School',
+          'update',
+          { where: { id: SCHOOL_A }, data: { users: { create: [{ email: 'a@b.com' }] } } },
+          SCHOOL_A,
+        ),
+      ).toThrow(UnsupportedTenantNestedOperationError);
+    });
+
+    it('leaves the school relation itself to the root mismatch check', () => {
+      const result = applyTenantScope(
+        'User',
+        'create',
+        { data: { email: 'a@b.com', school: { connect: { id: SCHOOL_A } } } },
+        SCHOOL_A,
+      );
+
+      expect(result.data).toEqual({ email: 'a@b.com', school: { connect: { id: SCHOOL_A } } });
+    });
+
+    it('leaves a nested write into a non-tenant-scoped model untouched', () => {
+      const result = applyTenantScope(
+        'User',
+        'update',
+        { where: { id: 'user-1' }, data: { refreshTokens: { deleteMany: {} } } },
+        SCHOOL_A,
+      );
+
+      expect(result.data).toEqual({ refreshTokens: { deleteMany: {} } });
+    });
   });
 });

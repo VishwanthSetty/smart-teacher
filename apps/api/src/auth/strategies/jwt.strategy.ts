@@ -11,6 +11,9 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey: configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
+      // Tolerates minor clock skew between this server and whatever issued the
+      // token (relevant once there's more than one API instance).
+      jsonWebTokenOptions: { clockTolerance: 10 },
     });
   }
 

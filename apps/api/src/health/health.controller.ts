@@ -1,6 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
+import { Public } from '../common/decorators/public.decorator';
 import { PrismaHealthIndicator } from './prisma-health.indicator';
 
 @ApiTags('health')
@@ -12,6 +13,7 @@ export class HealthController {
   ) {}
 
   @Get()
+  @Public()
   @HealthCheck()
   check() {
     return this.health.check([() => this.prismaHealthIndicator.pingCheck('db')]);

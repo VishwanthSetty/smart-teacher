@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation';
-import { getAccessToken } from '@/lib/session';
+import { getRefreshToken } from '@/lib/session';
 
+// Keyed off the refresh token, matching middleware: the access token expires every ~15m
+// and its absence says nothing about whether the session is still alive.
 export default function RootPage() {
-  redirect(getAccessToken() ? '/dashboard' : '/login');
+  redirect(getRefreshToken() ? '/dashboard' : '/login');
 }

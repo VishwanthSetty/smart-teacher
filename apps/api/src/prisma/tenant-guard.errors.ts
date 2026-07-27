@@ -29,3 +29,17 @@ export class UnsupportedTenantOperationError extends Error {
     this.name = 'UnsupportedTenantOperationError';
   }
 }
+
+// A nested relation reached a tenant-scoped model through a shape the guard cannot
+// rewrite — a to-one `include`, which takes no `where`, hanging off a parent that isn't
+// itself tenant-scoped, or a nested write verb the guard doesn't recognise. Both mean
+// the same thing to the caller: split it into an explicit, tenant-scoped query first.
+export class UnsupportedTenantNestedOperationError extends Error {
+  constructor(model: string, relation: string, detail: string) {
+    super(
+      `Tenant guard cannot scope ${model}.${relation} (${detail}); fetch the related row ` +
+        'in its own tenant-scoped query first.',
+    );
+    this.name = 'UnsupportedTenantNestedOperationError';
+  }
+}
