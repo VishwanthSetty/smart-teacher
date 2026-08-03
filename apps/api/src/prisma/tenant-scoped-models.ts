@@ -8,6 +8,11 @@ import { Prisma } from '@prisma/client';
 export const TENANT_SCOPED_MODELS = [
   'User',
   'SchoolContentEntitlement',
+  'TeacherAssignment',
+  'TeacherImportBatch',
+  'Section',
+  'Enrollment',
+  'StudentImportBatch',
 ] as const satisfies readonly Prisma.ModelName[];
 
 // Platform content: authored once for the whole platform, carries no `schoolId`, and
@@ -20,6 +25,9 @@ export const PLATFORM_GLOBAL_MODELS = [
   'GradeLevel',
   'Subject',
   'Video',
+  // Hangs off Video and inherits its globalness — a rendition is one encode of platform
+  // content, not something a school owns.
+  'VideoRendition',
 ] as const satisfies readonly Prisma.ModelName[];
 
 export type TenantScopedModel = (typeof TENANT_SCOPED_MODELS)[number];

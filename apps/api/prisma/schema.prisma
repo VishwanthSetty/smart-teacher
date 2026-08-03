@@ -41,16 +41,21 @@ enum SubjectStatus {
 }
 
 model School {
-  id           String                     @id @default(cuid())
-  name         String
-  slug         String                     @unique
-  academicYear String
-  status       SchoolStatus               @default(ACTIVE)
-  plan         Plan                       @default(FREE)
-  createdAt    DateTime                   @default(now())
-  updatedAt    DateTime                   @updatedAt
-  users        User[]
-  entitlements SchoolContentEntitlement[]
+  id                  String                     @id @default(cuid())
+  name                String
+  slug                String                     @unique
+  academicYear        String
+  status              SchoolStatus               @default(ACTIVE)
+  plan                Plan                       @default(FREE)
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+  users               User[]
+  entitlements        SchoolContentEntitlement[]
+  teacherAssignments  TeacherAssignment[]
+  teacherImportBatches TeacherImportBatch[]
+  sections            Section[]
+  enrollments         Enrollment[]
+  studentImportBatches StudentImportBatch[]
 }
 
 model User {
@@ -58,6 +63,11 @@ model User {
   email                String
   passwordHash         String?
   name                 String
+  // First/last name are collected on the student onboarding form and recomposed into
+  // `name` on every write; nullable because teachers/admins created before this feature
+  // (and platform users) never had them split out.
+  firstName            String?
+  lastName             String?
   role                 Role           @default(TEACHER)
   status               UserStatus     @default(ACTIVE)
   // sha256 hex of the raw invite token — unique so the token alone is a direct lookup key.
@@ -73,6 +83,10 @@ model User {
   // platform (null-school) scope, where tenant scoping no longer applies to them at all.
   school               School?        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   refreshTokens        RefreshToken[]
+  teacherAssignments   TeacherAssignment[]
+  teacherImportBatches TeacherImportBatch[]
+  enrollments          Enrollment[]
+  studentImportBatches StudentImportBatch[]
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
@@ -141,6 +155,11 @@ model GradeLevel {
   updatedAt    DateTime                   @updatedAt
   videos       Video[]
   entitlements SchoolContentEntitlement[]
+  // This back-relation makes a tenant-scoped model reachable from GradeLevel, so
+  // GradeLevel queries now enter the tenant guard's nested walker. Reads that select
+  // only scalar columns still pass straight through — never `include` this relation
+  // from a GradeLevel root; query Section directly instead.
+  sections     Section[]
 }
 
 model Subject {
@@ -154,25 +173,107 @@ model Subject {
   updatedAt    DateTime                   @updatedAt
   videos       Video[]
   entitlements SchoolContentEntitlement[]
+  // This back-relation makes a tenant-scoped model reachable from Subject, so Subject
+  // queries now enter the tenant guard's nested walker. Reads that select only scalar
+  // columns still pass straight through — never `include` this relation from a Subject
+  // root; query TeacherAssignment directly instead.
+  teacherAssignments TeacherAssignment[]
+}
+
+// The ingest lifecycle. A Video row is NOT synonymous with watchable content: only
+// READY rows are playable, and every school-facing read filters on that. QUEUED means
+// the source landed in the ingest bucket and a transcode job was enqueued; PROCESSING
+// means a worker has actually leased it and said so over the callback.
+//
+// QUEUED and PROCESSING are separate states because "no worker ever leased this" and "a
+// worker leased it 40 minutes ago and died" need different diagnoses — the first points
+// at the broker or an empty fleet, the second at that specific job. It also lets the
+// reconciler's clock restart when a worker genuinely claims the job.
+enum VideoStatus {
+  UPLOADING
+  QUEUED
+  PROCESSING
+  READY
+  FAILED
 }
 
 model Video {
-  id           String     @id @default(cuid())
+  id           String      @id @default(cuid())
   title        String
   description  String?
   // Provider-agnostic handle, resolved to a playback URL by the video adapter (F-19).
   // Never store a signed URL: it would outlive the entitlement check that produced it.
-  externalId   String
+  //
+  // Nullable because ingest creates the row *before* the media exists: the transcoder
+  // produces this handle, so an UPLOADING/QUEUED row cannot have one yet.
+  externalId   String?
+  status       VideoStatus @default(UPLOADING)
+  // Object key in the ingest bucket, "{videoId}/source.mp4". Unique so two rows can
+  // never claim the same object. Null until the row's id exists to derive it from.
+  sourceKey    String?     @unique
+  // Null follows RETAIN_INGEST_SOURCE; an explicit value is the per-video override.
+  retainSource Boolean?
+  // The *verified* size and type, read back off the object at confirm time — never the
+  // values the client declared when it asked for the upload URL.
+  sizeBytes    Int?
+  contentType  String?
   durationSecs Int?
   gradeLevelId String
-  gradeLevel   GradeLevel @relation(fields: [gradeLevelId], references: [id])
+  gradeLevel   GradeLevel  @relation(fields: [gradeLevelId], references: [id])
   subjectId    String
-  subject      Subject    @relation(fields: [subjectId], references: [id])
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  subject      Subject     @relation(fields: [subjectId], references: [id])
+
+  // Transcode output, all under "videos/{videoId}/" in the ingest bucket. Withheld from
+  // AdminVideoEntity for the same reason as sourceKey — they are internal bucket paths,
+  // and serving them to a client is a separate feature.
+  playlistKey        String? // "videos/{videoId}/master.m3u8"
+  posterKey          String?
+  renditions         VideoRendition[]
+
+  // Why the last attempt failed, in words an admin can act on. The worker maps ffmpeg's
+  // stderr to a short sanitised reason; raw stderr never reaches this column.
+  failureReason      String?
+
+  // Fencing token. Incremented on every enqueue and echoed by every callback; a callback
+  // carrying a stale value belongs to a superseded attempt and is refused. Without it, a
+  // worker that finishes 50 minutes late could overwrite the result of the retry that
+  // replaced it.
+  transcodeAttempts  Int       @default(0)
+  transcodeStartedAt DateTime?
+
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   // The entitlement key — every school-facing read filters on this pair.
   @@index([gradeLevelId, subjectId])
+  // The admin library lists and filters by ingest state.
+  @@index([status])
+  // TranscodeReconcilerService's sweep: status IN (QUEUED, PROCESSING) AND updatedAt < cutoff.
+  @@index([status, updatedAt])
+}
+
+// One HLS variant produced for a video, e.g. "360p". Platform-global like its parent —
+// no schoolId, listed in PLATFORM_GLOBAL_MODELS. A relational child rather than a Json
+// column on Video so reads stay typed; Prisma types Json as JsonValue, which would put a
+// hand-rolled narrower on every read.
+//
+// Cascade on video delete: a rendition has no meaning without its video, and the objects
+// it names go with it.
+model VideoRendition {
+  id          String   @id @default(cuid())
+  videoId     String
+  video       Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  // Matches the RENDITION_LADDER entry the worker encoded, e.g. "360p".
+  name        String
+  // Measured off the produced segment by ffprobe, not copied from the ladder: the ladder
+  // declares a height and lets ffmpeg derive an even width from the source aspect ratio.
+  width       Int
+  height      Int
+  bitrateKbps Int
+  playlistKey String // "videos/{videoId}/{name}/playlist.m3u8"
+  createdAt   DateTime @default(now())
+
+  @@unique([videoId, name])
 }
 
 // The one table that decides which global content a school may see, and therefore
@@ -190,4 +291,162 @@ model SchoolContentEntitlement {
 
   @@unique([schoolId, gradeLevelId, subjectId])
   @@index([schoolId])
+}
+
+// ---------------------------------------------------------------------------
+// Teachers (F-07) — bulk import
+// ---------------------------------------------------------------------------
+
+enum TeacherImportBatchStatus {
+  DRAFT
+  COMMITTED
+}
+
+// A teacher's subject assignment, optionally pinned to a section. Tenant-scoped rather
+// than a plain join on the global Subject: the same platform subject is taught by
+// teachers in many schools, so the grant only means anything per (school, user, subject).
+//
+// sectionId is nullable because the teacher CSV import predates sections and creates
+// school-wide "teaches this subject" grants. A row with a section is the one timetable
+// validation reads; a null-section row only says the teacher is qualified. Two partial
+// unique indexes (added by hand in the migration, since @@unique cannot express a WHERE
+// clause) enforce: no duplicate section-less grant, and one primary teacher per
+// (section, subject):
+//   CREATE UNIQUE INDEX "TeacherAssignment_schoolId_userId_subjectId_nosection_key"
+//     ON "TeacherAssignment"("schoolId", "userId", "subjectId") WHERE "sectionId" IS NULL;
+//   CREATE UNIQUE INDEX "TeacherAssignment_sectionId_subjectId_key"
+//     ON "TeacherAssignment"("sectionId", "subjectId") WHERE "sectionId" IS NOT NULL;
+model TeacherAssignment {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id])
+  sectionId String?
+  // Restrict, not Cascade: deleting a section must not silently unstaff its subjects.
+  section   Section? @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+
+  @@index([schoolId])
+  @@index([userId])
+  @@index([sectionId])
+}
+
+// Short-lived staging artefact for the upload -> preview -> confirm handshake: the
+// preview must show validation results before anything is written, so the parsed file
+// has to survive between the two requests. Rows are Json rather than a child table
+// because a batch is never queried by row, only read back whole, and DRAFT batches are
+// pruned after 24h.
+model TeacherImportBatch {
+  id           String                   @id @default(cuid())
+  schoolId     String
+  school       School                   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdById  String
+  createdBy    User                     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  fileName     String
+  status       TeacherImportBatchStatus @default(DRAFT)
+  totalRows    Int
+  validCount   Int
+  invalidCount Int
+  validRows    Json
+  invalidRows  Json
+  warnings     Json
+  committedAt  DateTime?
+  createdAt    DateTime                 @default(now())
+
+  @@index([schoolId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Students (F-08, first slice) — sections and enrollment
+// ---------------------------------------------------------------------------
+
+enum EnrollmentStatus {
+  ACTIVE
+  ENDED
+}
+
+// A class/section within a school, pinned to a platform grade level. Tenant-scoped:
+// "Grade 5 - A" only means anything inside one school.
+model Section {
+  id           String       @id @default(cuid())
+  schoolId     String
+  school       School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  gradeLevelId String
+  gradeLevel   GradeLevel   @relation(fields: [gradeLevelId], references: [id])
+  name         String // "A", "Blue" — the grade level supplies the rest of the label
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  enrollments  Enrollment[]
+  // This back-relation makes a tenant-scoped model reachable from Section, so Section
+  // queries now enter the tenant guard's nested walker. Reads that select only scalar
+  // columns still pass straight through — never `include` this relation from a Section
+  // root; query TeacherAssignment directly instead.
+  teacherAssignments TeacherAssignment[]
+
+  @@unique([schoolId, gradeLevelId, name])
+  @@index([schoolId])
+}
+
+// Many-to-many by design so multi-section students can be allowed later without a
+// migration; today two partial unique indexes (added by hand in the migration, since
+// @@unique cannot express a WHERE clause) cap it at one ACTIVE enrollment per student
+// and one ACTIVE roll number per section. Changing section ENDs the old row and inserts
+// a new one, so a student's placement history survives:
+//   CREATE UNIQUE INDEX "Enrollment_userId_active_key"
+//     ON "Enrollment"("userId") WHERE "status" = 'ACTIVE';
+//   CREATE UNIQUE INDEX "Enrollment_sectionId_rollNumber_active_key"
+//     ON "Enrollment"("sectionId", "rollNumber") WHERE "status" = 'ACTIVE' AND "rollNumber" IS NOT NULL;
+model Enrollment {
+  id         String           @id @default(cuid())
+  schoolId   String
+  school     School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sectionId  String
+  // Restrict, not Cascade: deleting a section must not silently erase enrolment history.
+  section    Section          @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  rollNumber String?
+  status     EnrollmentStatus @default(ACTIVE)
+  startedAt  DateTime         @default(now())
+  endedAt    DateTime?
+
+  @@index([schoolId])
+  @@index([userId, status])
+  @@index([sectionId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Students (F-12) — bulk import
+// ---------------------------------------------------------------------------
+
+enum StudentImportBatchStatus {
+  DRAFT
+  COMMITTED
+}
+
+// Same staging-artefact shape as TeacherImportBatch: the parsed file must survive
+// between the preview and confirm requests, and a batch is only ever read back whole.
+// A distinct enum/model rather than reusing the teacher one — the two imports are
+// expected to diverge (a student batch may later gain a PARTIALLY_COMMITTED status).
+model StudentImportBatch {
+  id           String                    @id @default(cuid())
+  schoolId     String
+  school       School                    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdById  String
+  createdBy    User                      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  fileName     String
+  status       StudentImportBatchStatus  @default(DRAFT)
+  totalRows    Int
+  validCount   Int
+  invalidCount Int
+  validRows    Json
+  invalidRows  Json
+  warnings     Json
+  committedAt  DateTime?
+  createdAt    DateTime                  @default(now())
+
+  @@index([schoolId, createdAt])
 }

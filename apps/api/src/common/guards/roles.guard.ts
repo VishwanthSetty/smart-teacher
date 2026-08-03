@@ -3,6 +3,8 @@ import { Reflector } from '@nestjs/core';
 import { Role } from '@prisma/client';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { IS_WORKER_ROUTE_KEY } from '../decorators/worker-route.decorator';
+import { IS_PLAYBACK_TOKEN_ROUTE_KEY } from '../decorators/playback-token-route.decorator';
 import type { AuthenticatedUser } from '../../auth/types/authenticated-user.interface';
 
 @Injectable()
@@ -17,6 +19,24 @@ export class RolesGuard implements CanActivate {
       context.getClass(),
     ]);
     if (isPublic) {
+      return true;
+    }
+
+    const isWorkerRoute = this.reflector.getAllAndOverride<boolean>(IS_WORKER_ROUTE_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    // Not undeclared — declared as belonging to the transcode worker, which has no Role
+    // to check. WorkerAuthGuard runs after this one and rejects anything unsigned.
+    if (isWorkerRoute) {
+      return true;
+    }
+
+    const isPlaybackTokenRoute = this.reflector.getAllAndOverride<boolean>(
+      IS_PLAYBACK_TOKEN_ROUTE_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (isPlaybackTokenRoute) {
       return true;
     }
 

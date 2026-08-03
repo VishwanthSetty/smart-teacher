@@ -15,19 +15,35 @@ function uniqueViolation(target: string[]): Prisma.PrismaClientKnownRequestError
 describe('TaxonomyService', () => {
   let service: TaxonomyService;
   let prisma: {
-    gradeLevel: { findMany: jest.Mock; create: jest.Mock };
+    gradeLevel: {
+      findMany: jest.Mock;
+      create: jest.Mock;
+      findUnique: jest.Mock;
+      update: jest.Mock;
+      delete: jest.Mock;
+    };
     subject: { findMany: jest.Mock; create: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
     video: { count: jest.Mock };
     schoolContentEntitlement: { count: jest.Mock };
+    teacherAssignment: { count: jest.Mock };
+    section: { count: jest.Mock };
     $transaction: jest.Mock;
   };
 
   beforeEach(async () => {
     prisma = {
-      gradeLevel: { findMany: jest.fn(), create: jest.fn() },
+      gradeLevel: {
+        findMany: jest.fn(),
+        create: jest.fn(),
+        findUnique: jest.fn(),
+        update: jest.fn(),
+        delete: jest.fn(),
+      },
       subject: { findMany: jest.fn(), create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
-      video: { count: jest.fn() },
-      schoolContentEntitlement: { count: jest.fn() },
+      video: { count: jest.fn().mockResolvedValue(0) },
+      schoolContentEntitlement: { count: jest.fn().mockResolvedValue(0) },
+      teacherAssignment: { count: jest.fn().mockResolvedValue(0) },
+      section: { count: jest.fn().mockResolvedValue(0) },
       $transaction: jest.fn((operations: unknown[]) => Promise.all(operations)),
     };
 
@@ -71,6 +87,105 @@ describe('TaxonomyService', () => {
     await expect(service.createGradeLevel({ name: 'Grade 5', rank: 7 })).rejects.toThrow(
       /name already exists/,
     );
+  });
+
+  describe('updateGradeLevel', () => {
+    it('404s on a grade level that does not exist', async () => {
+      prisma.gradeLevel.findUnique.mockResolvedValue(null);
+
+      await expect(service.updateGradeLevel('nope', { name: 'Grade 9' })).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.gradeLevel.update).not.toHaveBeenCalled();
+    });
+
+    it('updates name and rank', async () => {
+      prisma.gradeLevel.findUnique.mockResolvedValue({ id: 'g5' });
+      prisma.gradeLevel.update.mockResolvedValue({ id: 'g5', name: 'Grade 9', rank: 9 });
+
+      await expect(service.updateGradeLevel('g5', { name: 'Grade 9', rank: 9 })).resolves.toEqual({
+        id: 'g5',
+        name: 'Grade 9',
+        rank: 9,
+      });
+      expect(prisma.gradeLevel.update).toHaveBeenCalledWith({
+        where: { id: 'g5' },
+        data: { name: 'Grade 9', rank: 9 },
+        select: { id: true, name: true, rank: true },
+      });
+    });
+
+    // name and rank are separately unique, so the caller is told which one collided —
+    // same reasoning as createGradeLevel.
+    it('reports a duplicate grade level rank distinctly from a duplicate name', async () => {
+      prisma.gradeLevel.findUnique.mockResolvedValue({ id: 'g5' });
+      prisma.gradeLevel.update.mockRejectedValue(uniqueViolation(['rank']));
+
+      await expect(service.updateGradeLevel('g5', { rank: 6 })).rejects.toThrow(/rank already exists/);
+
+      prisma.gradeLevel.update.mockRejectedValue(uniqueViolation(['name']));
+
+      await expect(service.updateGradeLevel('g5', { name: 'Grade 6' })).rejects.toThrow(
+        /name already exists/,
+      );
+    });
+
+    it('lets an unrelated database error bubble rather than mislabelling it a conflict', async () => {
+      prisma.gradeLevel.findUnique.mockResolvedValue({ id: 'g5' });
+      prisma.gradeLevel.update.mockRejectedValue(new Error('connection lost'));
+
+      await expect(service.updateGradeLevel('g5', { name: 'Grade 6' })).rejects.toThrow(
+        'connection lost',
+      );
+    });
+  });
+
+  describe('deleteGradeLevel', () => {
+    it('404s on a grade level that does not exist', async () => {
+      prisma.gradeLevel.findUnique.mockResolvedValue(null);
+
+      await expect(service.deleteGradeLevel('nope')).rejects.toThrow(NotFoundException);
+      expect(prisma.gradeLevel.delete).not.toHaveBeenCalled();
+    });
+
+    it('refuses to delete a grade level that still has platform videos', async () => {
+      prisma.gradeLevel.findUnique.mockResolvedValue({ id: 'g5' });
+      prisma.video.count.mockResolvedValue(1);
+
+      await expect(service.deleteGradeLevel('g5')).rejects.toThrow(ConflictException);
+      expect(prisma.gradeLevel.delete).not.toHaveBeenCalled();
+    });
+
+    // Pins the entitlement check to the SchoolContentEntitlement root, same reasoning as
+    // updateSubject's equivalent check: asking from a GradeLevel relation would throw
+    // MissingTenantContextError against a real SUPER_ADMIN request.
+    it('refuses to delete a grade level a school is still entitled to', async () => {
+      prisma.gradeLevel.findUnique.mockResolvedValue({ id: 'g5' });
+      prisma.schoolContentEntitlement.count.mockResolvedValue(1);
+
+      await expect(service.deleteGradeLevel('g5')).rejects.toThrow(ConflictException);
+      expect(prisma.schoolContentEntitlement.count).toHaveBeenCalledWith({
+        where: { gradeLevelId: 'g5' },
+      });
+      expect(prisma.gradeLevel.delete).not.toHaveBeenCalled();
+    });
+
+    it('refuses to delete a grade level that still has sections', async () => {
+      prisma.gradeLevel.findUnique.mockResolvedValue({ id: 'g5' });
+      prisma.section.count.mockResolvedValue(1);
+
+      await expect(service.deleteGradeLevel('g5')).rejects.toThrow(ConflictException);
+      expect(prisma.section.count).toHaveBeenCalledWith({ where: { gradeLevelId: 'g5' } });
+      expect(prisma.gradeLevel.delete).not.toHaveBeenCalled();
+    });
+
+    it('deletes a grade level nothing references', async () => {
+      prisma.gradeLevel.findUnique.mockResolvedValue({ id: 'g5' });
+
+      await service.deleteGradeLevel('g5');
+
+      expect(prisma.gradeLevel.delete).toHaveBeenCalledWith({ where: { id: 'g5' } });
+    });
   });
 
   it('rejects a duplicate subject code with a conflict', async () => {
@@ -161,6 +276,24 @@ describe('TaxonomyService', () => {
       expect(prisma.subject.update).not.toHaveBeenCalled();
     });
 
+    // Same root-at-the-referencing-model reasoning as the entitlement check above:
+    // TeacherAssignment is tenant-scoped, so asking it from a Subject root would throw
+    // for the SUPER_ADMIN who is the only caller here.
+    it('refuses to retire a subject teachers are still assigned to', async () => {
+      prisma.subject.findUnique.mockResolvedValue(ACTIVE);
+      prisma.video.count.mockResolvedValue(0);
+      prisma.schoolContentEntitlement.count.mockResolvedValue(0);
+      prisma.teacherAssignment.count.mockResolvedValue(1);
+
+      await expect(
+        service.updateSubject('sub-1', { status: SubjectStatus.RETIRED }),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.teacherAssignment.count).toHaveBeenCalledWith({
+        where: { subjectId: 'sub-1' },
+      });
+      expect(prisma.subject.update).not.toHaveBeenCalled();
+    });
+
     it('retires a subject nothing references', async () => {
       prisma.subject.findUnique.mockResolvedValue(ACTIVE);
       prisma.video.count.mockResolvedValue(0);
@@ -184,6 +317,7 @@ describe('TaxonomyService', () => {
 
       expect(prisma.video.count).not.toHaveBeenCalled();
       expect(prisma.schoolContentEntitlement.count).not.toHaveBeenCalled();
+      expect(prisma.teacherAssignment.count).not.toHaveBeenCalled();
     });
 
     it('reactivates a retired subject without a reference check', async () => {

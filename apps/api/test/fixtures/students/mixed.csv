@@ -1,0 +1,8 @@
+first_name,last_name,email,grade_level,section,roll_number
+New,Student,newstudent@example.com,Grade 5,A,101
+Dupe,One,dupe@example.com,Grade 5,B,102
+Dupe,Two,dupe@example.com,Grade 6,A,103
+Existing,Student,student@smartteacher.dev,Grade 5,A,104
+Bad,Grade,badgrade@example.com,Grade 9,A,105
+Bad,Section,badsection@example.com,Grade 5,Z,106
+Roll,Clash,rollclash@example.com,Grade 5,A,1

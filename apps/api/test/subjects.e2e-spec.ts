@@ -3,6 +3,7 @@ import { Role } from '@prisma/client';
 import request from 'supertest';
 import { createE2eApp } from './utils/e2e-app';
 import { loginAllRoles } from './utils/login';
+import { seedContentFixtures } from './utils/content-fixtures';
 
 interface Subject {
   id: string;
@@ -17,8 +18,8 @@ interface Subject {
 const TEST_CODE = `e2e-subject-${Date.now()}`;
 
 // The canonical subject taxonomy (F-37): SUPER_ADMIN owns it, every role reads it, and
-// a subject in use cannot be retired. The seed entitles demo-school to
-// (Grade 5, Mathematics) and gives `maths` videos too, so `maths` is the fixture for
+// a subject in use cannot be retired. The fixtures entitle demo-school to
+// (Grade 5, Mathematics) and give `maths` videos too, so `maths` is the fixture for
 // "still referenced".
 describe('Subjects (e2e)', () => {
   let app: INestApplication;
@@ -43,12 +44,13 @@ describe('Subjects (e2e)', () => {
     const res = await get(`/admin/schools?search=${slug}`, asSuperAdmin()).expect(200);
     const school = res.body.data.find((s: { slug: string }) => s.slug === slug);
     if (!school) {
-      throw new Error(`Seed school "${slug}" is missing — run npm run db:seed`);
+      throw new Error(`School fixture "${slug}" is missing`);
     }
     return school.id;
   }
 
   beforeAll(async () => {
+    await seedContentFixtures();
     app = await createE2eApp();
     tokens = await loginAllRoles(app);
 
@@ -137,9 +139,10 @@ describe('Subjects (e2e)', () => {
         .set('Authorization', `Bearer ${asSuperAdmin()}`)
         .send({
           title: 'Should not be created',
-          externalId: 'e2e-retired-subject',
           gradeLevelId: grade5Id,
           subjectId: createdId,
+          contentType: 'video/mp4',
+          sizeBytes: 1024,
         })
         .expect(409);
     });

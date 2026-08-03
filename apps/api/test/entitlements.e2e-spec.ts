@@ -3,12 +3,12 @@ import { Role } from '@prisma/client';
 import request from 'supertest';
 import { createE2eApp } from './utils/e2e-app';
 import { loginAllRoles, login, SEED_PASSWORD } from './utils/login';
+import { seedContentFixtures, SCIENCE_VIDEO_TITLE } from './utils/content-fixtures';
 
 const MISSING_ID = 'missing-00000000000000000000000';
-const SCIENCE_VIDEO_TITLE = 'Grade 5 Science — The Water Cycle';
 
 // Granting entitlements is SUPER_ADMIN's surface (F-06). These tests grant to
-// demo-school-b, which the seed deliberately leaves with none, then revoke — the seed's
+// demo-school-b, which the fixtures deliberately leave with none, then revoke — that
 // asymmetry is the fixture other specs assert against, so it must be restored.
 describe('Content entitlements (e2e)', () => {
   let app: INestApplication;
@@ -49,12 +49,13 @@ describe('Content entitlements (e2e)', () => {
 
     const school = res.body.data.find((s: { slug: string }) => s.slug === slug);
     if (!school) {
-      throw new Error(`Seed school "${slug}" is missing — run npm run db:seed`);
+      throw new Error(`School fixture "${slug}" is missing`);
     }
     return school.id;
   }
 
   beforeAll(async () => {
+    await seedContentFixtures();
     app = await createE2eApp();
     tokens = await loginAllRoles(app);
     teacherB = await login(app, 'teacher-b@smartteacher.dev', SEED_PASSWORD, 'demo-school-b');

@@ -11,13 +11,14 @@ export class LoggingInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest<Request>();
     const response = context.switchToHttp().getResponse<Response>();
     const { method, originalUrl } = request;
+    const safeUrl = originalUrl.replace(/([?&]t=)[^&]+/g, '$1REDACTED');
     const start = Date.now();
 
     return next.handle().pipe(
       tap(() => {
         const { statusCode } = response;
         const duration = Date.now() - start;
-        this.logger.log(`${method} ${originalUrl} ${statusCode} ${duration}ms`);
+        this.logger.log(`${method} ${safeUrl} ${statusCode} ${duration}ms`);
       }),
     );
   }

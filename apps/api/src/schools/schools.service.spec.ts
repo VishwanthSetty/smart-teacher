@@ -121,6 +121,27 @@ describe('SchoolsService', () => {
     expect(result.meta).toEqual({ page: 1, limit: 2, total: 3, totalPages: 2 });
   });
 
+  it('returns a single school with its primary admin email', async () => {
+    prisma.school.findUnique.mockResolvedValue({
+      ...baseSchool,
+      users: [{ email: 'head@springfield.edu' }],
+    });
+
+    const result = await service.findOne('school-1');
+
+    expect(result).toEqual(
+      expect.objectContaining({ id: 'school-1', adminEmail: 'head@springfield.edu' }),
+    );
+    // The joined users array is a query artefact, never part of the response contract.
+    expect(result).not.toHaveProperty('users');
+  });
+
+  it('throws NotFoundException when reading a missing school', async () => {
+    prisma.school.findUnique.mockResolvedValue(null);
+
+    await expect(service.findOne('missing')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
   it('revokes tenant refresh tokens when suspending a school', async () => {
     prisma.school.findUnique.mockResolvedValue(baseSchool);
     prisma.school.update.mockResolvedValue({ ...baseSchool, status: SchoolStatus.SUSPENDED });

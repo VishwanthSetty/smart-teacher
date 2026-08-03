@@ -3,6 +3,7 @@ import { Role } from '@prisma/client';
 import type { ActorScope } from '../common/authorization/resource-access';
 import { ContentEntitlementsService } from './content-entitlements.service';
 import { ActorContentScopeService } from './actor-content-scope.service';
+import { EnrollmentsService } from '../students/enrollments.service';
 
 const G5_MATHS = { gradeLevelId: 'g5', subjectId: 'maths' };
 const G6_SCIENCE = { gradeLevelId: 'g6', subjectId: 'science' };
@@ -14,14 +15,18 @@ function actor(role: Role, schoolId: string | null = 'school-a'): ActorScope {
 describe('ActorContentScopeService', () => {
   let service: ActorContentScopeService;
   let entitlements: { listEntitledPairs: jest.Mock; isEntitled: jest.Mock };
+  let enrollments: { activeGradeLevelIdFor: jest.Mock };
 
   beforeEach(async () => {
     entitlements = { listEntitledPairs: jest.fn(), isEntitled: jest.fn() };
+    // A TEACHER path never calls this — only asserted in the STUDENT-specific tests.
+    enrollments = { activeGradeLevelIdFor: jest.fn().mockResolvedValue(null) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ActorContentScopeService,
         { provide: ContentEntitlementsService, useValue: entitlements },
+        { provide: EnrollmentsService, useValue: enrollments },
       ],
     }).compile();
 
@@ -50,15 +55,40 @@ describe('ActorContentScopeService', () => {
     expect(scope).not.toBe('all');
   });
 
-  // F-06 specifies narrowing a teacher to the pairs they teach and a student to their
-  // enrolled section's grade level. Both need F-08's assignment/enrollment models, so
-  // today every in-school role sees the school's full entitlement set. This test records
-  // that deliberate widening: when F-08 narrows `resolve`, it should fail and be updated.
-  it('currently grants every in-school role the full entitlement set — per-actor narrowing lands with F-08', async () => {
+  // TEACHER narrowing (only the pairs they teach) still needs section-level teacher
+  // assignments, which TeacherAssignment does not carry yet — deferred, not done here.
+  it('grants TEACHER the full entitlement set — per-subject narrowing still pending', async () => {
     entitlements.listEntitledPairs.mockResolvedValue([G5_MATHS, G6_SCIENCE]);
 
     expect(await service.resolve(actor(Role.TEACHER))).toEqual([G5_MATHS, G6_SCIENCE]);
-    expect(await service.resolve(actor(Role.STUDENT))).toEqual([G5_MATHS, G6_SCIENCE]);
+    expect(enrollments.activeGradeLevelIdFor).not.toHaveBeenCalled();
+  });
+
+  describe('STUDENT narrowing', () => {
+    it("narrows to the student's enrolled grade level, intersected with the school's entitlements", async () => {
+      entitlements.listEntitledPairs.mockResolvedValue([G5_MATHS, G6_SCIENCE]);
+      enrollments.activeGradeLevelIdFor.mockResolvedValue('g5');
+
+      const scope = await service.resolve(actor(Role.STUDENT));
+
+      expect(scope).toEqual([G5_MATHS]);
+      expect(enrollments.activeGradeLevelIdFor).toHaveBeenCalledWith('u1');
+    });
+
+    // Failing open here would hand an unplaced student the whole school library.
+    it('resolves a student with no active enrollment to an empty scope, not the school-wide set', async () => {
+      entitlements.listEntitledPairs.mockResolvedValue([G5_MATHS, G6_SCIENCE]);
+      enrollments.activeGradeLevelIdFor.mockResolvedValue(null);
+
+      expect(await service.resolve(actor(Role.STUDENT))).toEqual([]);
+    });
+
+    it('resolves an enrolled student to an empty scope when their grade level has no entitlement', async () => {
+      entitlements.listEntitledPairs.mockResolvedValue([G6_SCIENCE]);
+      enrollments.activeGradeLevelIdFor.mockResolvedValue('g5');
+
+      expect(await service.resolve(actor(Role.STUDENT))).toEqual([]);
+    });
   });
 
   describe('includes', () => {

@@ -28,6 +28,11 @@ export class SchoolsController {
     return this.schoolsService.findAll(query);
   }
 
+  @Get(':id')
+  findOne(@Param('id') id: string): Promise<SchoolEntity> {
+    return this.schoolsService.findOne(id);
+  }
+
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateSchoolDto): Promise<SchoolEntity> {
     return this.schoolsService.update(id, dto);

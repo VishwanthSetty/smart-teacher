@@ -1,0 +1,6 @@
+email,name,subject_codes
+newteacher@example.com,New Teacher,maths
+dupe@example.com,Dupe One,maths
+dupe@example.com,Dupe Two,science
+teacher@smartteacher.dev,Existing Teacher,maths
+badsubject@example.com,Bad Subject,art

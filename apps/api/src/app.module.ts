@@ -10,12 +10,17 @@ import { SchoolsModule } from './schools/schools.module';
 import { StatsModule } from './stats/stats.module';
 import { EntitlementsModule } from './entitlements/entitlements.module';
 import { TaxonomyModule } from './taxonomy/taxonomy.module';
+import { TeachersModule } from './teachers/teachers.module';
+import { StudentsModule } from './students/students.module';
 import { VideosModule } from './videos/videos.module';
 import { HealthModule } from './health/health.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { WorkerAuthGuard } from './auth/guards/worker-auth.guard';
+import { PlaybackModule } from './playback/playback.module';
+import { PlaybackTokenGuard } from './playback/playback-token.guard';
 
 @Module({
   imports: [
@@ -28,7 +33,10 @@ import { RolesGuard } from './common/guards/roles.guard';
     StatsModule,
     EntitlementsModule,
     TaxonomyModule,
+    TeachersModule,
+    StudentsModule,
     VideosModule,
+    PlaybackModule,
     HealthModule,
   ],
   providers: [
@@ -38,6 +46,12 @@ import { RolesGuard } from './common/guards/roles.guard';
     // @AnyRole, or @Roles(...) — RolesGuard denies anything undeclared.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    // Third category, after the two above have stood down for it: a @WorkerRoute() has no
+    // bearer token and no Role, and is authenticated by an HMAC over the raw body. Global
+    // so that the one piece of metadata which excuses a route from RolesGuard is the same
+    // piece that subjects it to this guard.
+    { provide: APP_GUARD, useClass: WorkerAuthGuard },
+    { provide: APP_GUARD, useClass: PlaybackTokenGuard },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
   ],
 })

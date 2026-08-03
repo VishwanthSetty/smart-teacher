@@ -8,14 +8,19 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // rawBody: the transcode callback's HMAC is computed over the bytes the worker sent.
+  // Re-serialising the parsed body would reorder keys and drop whitespace, and the
+  // signature would never match.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
   const configService = app.get(ConfigService);
 
   // Per-IP login lockout reads req.ip; trust the BFF's X-Forwarded-For so that
   // reflects the real client rather than the Next.js server's address.
   app.set('trust proxy', true);
 
-  app.use(helmet());
+  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+  // Browser playback still uses the explicit page origin below; widening CORP only
+  // permits media elements and Safari's native HLS loader to consume those responses.
   app.enableCors({
     origin: configService.getOrThrow<string>('CORS_ORIGIN'),
     credentials: true,

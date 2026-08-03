@@ -6,6 +6,7 @@ Production-grade boilerplate for the Smart Teacher platform: a NestJS + PostgreS
 
 - **API** (`apps/api`): NestJS, PostgreSQL, Prisma, Passport (local + JWT strategies), class-validator, Swagger.
 - **Web** (`apps/web`): Next.js (App Router), TypeScript, Tailwind CSS.
+- **Worker** (`apps/worker`): plain Node + BullMQ + ffmpeg. Consumes the transcode queue and turns an uploaded source into an HLS ladder. Outbound-only, so the same image runs on a laptop or a cloud VM — see `apps/worker/README.md`.
 - **Monorepo**: npm workspaces + Turborepo.
 - **Shared**: `packages/shared-types` (Role enum, shared interfaces), `packages/tsconfig` (base TS configs).
 
@@ -52,7 +53,7 @@ npm install
 cp apps/api/.env.example apps/api/.env
 cp apps/web/.env.example apps/web/.env
 
-# 4. Run migrations and seed data
+# 4. Run migrations and seed the platform super admin
 npm run db:migrate
 npm run db:seed
 
@@ -63,15 +64,19 @@ npm run dev
 - API: http://localhost:4000 (Swagger docs at `/api/docs`, health check at `/health`)
 - Web: http://localhost:3000
 
-## Seeded accounts
+## Seeded account
+
+The seed creates exactly one account — the platform super admin, who has no tenant and so
+has nobody above them to invite them:
 
 | Email | Password | Role | School |
 | --- | --- | --- | --- |
 | superadmin@smartteacher.dev | Passw0rd! | SUPER_ADMIN | none (platform) |
-| admin@smartteacher.dev | Passw0rd! | SCHOOL_ADMIN | demo-school |
-| teacher@smartteacher.dev | Passw0rd! | TEACHER | demo-school |
-| student@smartteacher.dev | Passw0rd! | STUDENT | demo-school |
-| admin-b@smartteacher.dev | Passw0rd! | SCHOOL_ADMIN | demo-school-b |
+
+Everything else is created through the app, so a fresh environment matches what real
+onboarding produces: sign in as the super admin to create a school and its first
+SCHOOL_ADMIN, add grade levels and subjects, and grant the school its content
+entitlements. Until you do, that school's teachers and students see an empty library.
 
 Log in at `/login` on the web app. The dashboard shows the current user's name and role. `GET /admin/users` on the API demonstrates RBAC: it returns data for the SCHOOL_ADMIN account and a 403 for the TEACHER/STUDENT accounts. Every route's role requirements are enforced server-side by a global guard (deny-by-default) and are exhaustively listed in `apps/api/test/rbac-matrix.e2e-spec.ts`.
 
@@ -88,6 +93,7 @@ Log in at `/login` on the web app. The dashboard shows the current user's name a
 | `npm run docker:up` / `docker:down` | Start/stop the full Docker stack (Postgres + api + web) |
 | `docker compose up -d --build` | Rebuild images and start the full stack |
 | `docker compose up -d postgres` | Start Postgres only (for the local dev workflow) |
+| `docker compose up -d postgres redis minio` | The backing services the local dev workflow needs once video ingest is in play |
 
 ## Out of scope
 

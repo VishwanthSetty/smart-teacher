@@ -1,0 +1,138 @@
+'use client';
+
+import { FormEvent, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { UserStatus, type Section, type Student } from '@smart-teacher/shared-types';
+
+export function StudentRowActions({ student, sections }: { student: Student; sections: Section[] }) {
+  const router = useRouter();
+  const [isEditing, setIsEditing] = useState(false);
+  const [firstName, setFirstName] = useState(student.firstName ?? '');
+  const [lastName, setLastName] = useState(student.lastName ?? '');
+  const [rollNumber, setRollNumber] = useState(student.enrollment?.rollNumber ?? '');
+  const [sectionId, setSectionId] = useState(student.enrollment?.sectionId ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const isDisabled = student.status === UserStatus.DISABLED;
+  const statusLabel = isDisabled ? 'Reactivate' : 'Deactivate';
+  const nextStatus = isDisabled ? UserStatus.ACTIVE : UserStatus.DISABLED;
+
+  async function patchStudent(patch: Record<string, unknown>): Promise<boolean> {
+    setError(null);
+    setIsSubmitting(true);
+    const response = await fetch(`/api/students/${student.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    setIsSubmitting(false);
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({ message: 'Failed to update student' }));
+      setError(body.message ?? 'Failed to update student');
+      return false;
+    }
+    return true;
+  }
+
+  async function handleEditSubmit(event: FormEvent) {
+    event.preventDefault();
+    const ok = await patchStudent({ firstName, lastName, rollNumber, sectionId });
+    if (ok) {
+      setIsEditing(false);
+      router.refresh();
+    }
+  }
+
+  async function handleStatusToggle() {
+    const message =
+      nextStatus === UserStatus.DISABLED
+        ? `Deactivate ${student.name}? They will not be able to log in, but their record stays.`
+        : `Reactivate ${student.name}?`;
+    if (!window.confirm(message)) {
+      return;
+    }
+    const ok = await patchStudent({ status: nextStatus });
+    if (ok) {
+      router.refresh();
+    }
+  }
+
+  if (isEditing) {
+    return (
+      <form onSubmit={handleEditSubmit} className="flex flex-wrap items-center justify-end gap-2">
+        <input
+          type="text"
+          required
+          value={firstName}
+          onChange={(e) => setFirstName(e.target.value)}
+          placeholder="First name"
+          className="w-24 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-gray-500 focus:outline-none"
+        />
+        <input
+          type="text"
+          required
+          value={lastName}
+          onChange={(e) => setLastName(e.target.value)}
+          placeholder="Last name"
+          className="w-24 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-gray-500 focus:outline-none"
+        />
+        <input
+          type="text"
+          value={rollNumber}
+          onChange={(e) => setRollNumber(e.target.value)}
+          placeholder="Roll no"
+          className="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-gray-500 focus:outline-none"
+        />
+        <select
+          value={sectionId}
+          onChange={(e) => setSectionId(e.target.value)}
+          className="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-gray-500 focus:outline-none"
+        >
+          {sections.map((section) => (
+            <option key={section.id} value={section.id}>
+              {section.label}
+            </option>
+          ))}
+        </select>
+        {error && <p className="w-full text-right text-sm text-red-600">{error}</p>}
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+        >
+          {isSubmitting ? 'Saving…' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setIsEditing(false)}
+          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100"
+        >
+          Cancel
+        </button>
+      </form>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-2">
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      <button
+        type="button"
+        onClick={() => setIsEditing(true)}
+        className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100"
+      >
+        Edit
+      </button>
+      <button
+        type="button"
+        onClick={handleStatusToggle}
+        disabled={isSubmitting}
+        className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100 disabled:opacity-50"
+      >
+        {isSubmitting ? '…' : statusLabel}
+      </button>
+    </div>
+  );
+}

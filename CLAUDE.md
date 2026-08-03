@@ -18,6 +18,7 @@ npm workspaces + Turborepo. Node 22 (`.nvmrc`). Run scripts from repo root.
 | --- | --- |
 | `apps/api` | NestJS + Prisma + PostgreSQL REST API (port 4000). Swagger `/api/docs`, health `/health`. |
 | `apps/web` | Next.js App Router + Tailwind (port 3000). |
+| `apps/worker` | Transcode consumer: BullMQ + ffmpeg, plain Node (no Nest — it has no HTTP surface). Listens on no port; reports results to the API over an HMAC-signed callback and holds no `DATABASE_URL`. See `apps/worker/README.md`. |
 | `packages/shared-types` | `Role` enum + shared interfaces — `@smart-teacher/shared-types`. |
 | `packages/tsconfig` | Base TS configs — `@smart-teacher/tsconfig`. |
 
@@ -28,7 +29,7 @@ npm workspaces + Turborepo. Node 22 (`.nvmrc`). Run scripts from repo root.
 | `npm run dev` | api + web in watch mode |
 | `npm run build` / `lint` | All workspaces |
 | `npm run test:e2e` | API e2e auth/RBAC/tenancy suite |
-| `npm run db:migrate` / `db:seed` | `prisma migrate dev` (api only) / seed users + content |
+| `npm run db:migrate` / `db:seed` | `prisma migrate dev` (api only) / seed the platform super admin |
 | `npm run docker:up` / `docker:down` | Full stack (Postgres + api + web) |
 
 Single test, from `apps/api`: `npx jest --config ./test/jest-e2e.json -t "name substring"`
@@ -53,17 +54,22 @@ npm run dev
 
 **Two layers of env files.** Root `.env` feeds `docker-compose.yml`; `apps/api/.env` and `apps/web/.env` feed the natively-run apps. The API validates env at boot via `config/env.validation.ts` (class-validator) — a missing/invalid var throws on startup. Use `ConfigService.getOrThrow` downstream; **never read `process.env` outside the config module.**
 
-**Seeded accounts** (`apps/api/prisma/seed.ts`), password `Passw0rd!`:
+**The seed creates exactly one account** (`apps/api/prisma/seed.ts`): `superadmin@smartteacher.dev` / `Passw0rd!`, SUPER_ADMIN, no school. It is the only account that cannot be created through the product — a super admin has no tenant, so nobody above them can invite them.
 
-| Email | Role / tenant |
-| --- | --- |
-| `superadmin@smartteacher.dev` | SUPER_ADMIN (no school) |
-| `admin@`, `teacher@`, `student@` | SCHOOL_ADMIN / TEACHER / STUDENT (`demo-school`) |
-| `admin-b@`, `teacher-b@` | SCHOOL_ADMIN / TEACHER (`demo-school-b`, second tenant for isolation tests) |
+**Nothing else is seeded** — no schools, school users, grade levels, subjects, videos, content entitlements, sections or enrolments. A fresh environment starts empty and an operator creates them through the app, so the seed can never drift from what real onboarding produces. **Do not add fixtures back to `seed.ts`;** they belong in `apps/api/test/utils/`.
+
+**E2e fixtures live in two places, in this order:**
+
+| File | Provides | Runs |
+| --- | --- | --- |
+| `test/utils/global-setup.ts` | `demo-school` + `demo-school-b`, and one account per role (`admin@`, `teacher@`, `student@`, `admin-b@`, `teacher-b@`) | Once per jest run, via `globalSetup` in `jest-e2e.json` — no spec calls it |
+| `test/utils/content-fixtures.ts` | Grade levels `Grade 5`/`Grade 6`, subjects `maths`/`science`, three videos, the entitlement, sections, the student's enrolment | `await seedContentFixtures()` first thing in a spec's `beforeAll`, before `createE2eApp()` |
+
+`global-setup.ts` resets password, role and status on every run rather than using `update: {}` — the auth suites disable accounts, reset passwords and suspend schools, so a run that failed part-way would otherwise poison later runs.
 
 `teacher-b@` exists because "watch entitled videos" is a TEACHER/STUDENT capability — proving an unentitled school sees an empty library over HTTP needs a non-admin in that tenant.
 
-**Seeded platform content:** grade levels `Grade 5`/`Grade 6`, subjects `maths`/`science`, three videos across those pairs. Entitlements are **deliberately asymmetric** — `demo-school` holds exactly one, `(Grade 5, Mathematics)`; `demo-school-b` holds none. Entitlement tests assert that asymmetry, so granting more makes them pass vacuously.
+Entitlements in `content-fixtures.ts` are **deliberately asymmetric** — `demo-school` holds exactly one, `(Grade 5, Mathematics)`; `demo-school-b` holds none. Entitlement tests assert that asymmetry, so granting more makes them pass vacuously.
 
 `GET /admin/users` → `200` for SCHOOL_ADMIN, `403` for TEACHER/STUDENT. Reference example of RBAC — copy its shape.
 
@@ -235,6 +241,6 @@ The platform is multi-tenant. Before writing a line, confirm — **if any answer
 
 **Platform content is the reviewed exception to "everything has `school_id`".** `GradeLevel`, `Subject` and `Video` are global, listed in `PLATFORM_GLOBAL_MODELS`; a school reaches them only through `SchoolContentEntitlement`, which *is* tenant-scoped. `ContentEntitlementsService` (`apps/api/src/entitlements/`) is the gate — it takes no school id, because the tenant guard supplies it.
 
-**Every content read resolves its scope through `ActorContentScopeService`** (same folder), the one answer to "which `(gradeLevel, subject)` pairs may this actor reach?". `VideosAccessPolicy` and `VideosService.findAllVisibleTo` both go through it, so a single-video read can never be wider than the list; its `includes()` derives from `resolve()` rather than calling `isEntitled` directly for exactly that reason. **F-06 specifies a further narrowing it cannot yet perform** — TEACHER should see only pairs they teach, STUDENT only their enrolled section's grade level — because that needs F-08's assignment/enrollment models. Today every in-school role resolves to the school's full entitlement set, deliberately broader than F-06's target. **When F-08 lands, narrow inside `resolve` and every content read narrows with it.**
+**Every content read resolves its scope through `ActorContentScopeService`** (same folder), the one answer to "which `(gradeLevel, subject)` pairs may this actor reach?". `VideosAccessPolicy` and `VideosService.findAllVisibleTo` both go through it, so a single-video read can never be wider than the list; its `includes()` derives from `resolve()` rather than calling `isEntitled` directly for exactly that reason. **STUDENT is narrowed**: `resolve()` intersects the school's entitlements with the pairs matching the student's `EnrollmentsService.activeGradeLevelIdFor` grade level (`apps/api/src/students/`) — no active enrollment resolves to an empty scope, never the school-wide set. **TEACHER narrowing is still deferred** — a teacher should see only the subjects they teach, which needs `TeacherAssignment` to carry a `sectionId` it does not have yet — so every teacher continues to resolve to the school's full entitlement set. **When that lands, narrow the TEACHER branch inside `resolve` and every content read narrows with it.**
 
 The cross-tenant grant path is a *separate* service, `ContentEntitlementsAdminService`, reachable only via `EntitlementsAdminController` (`SUPER_ADMIN` + `@BypassTenantScope()`). Keep them apart: `ContentEntitlementsService`'s safety property is that no method accepts a school id, and merging the admin path would put one there.

@@ -21,7 +21,9 @@ export async function createE2eApp(options: CreateE2eAppOptions = {}): Promise<I
 
   const moduleFixture = await builder.compile();
 
-  const app = moduleFixture.createNestApplication();
+  // Mirrors main.ts: WorkerAuthGuard verifies its HMAC against req.rawBody, so without
+  // this every transcode-callback spec would 401 for the wrong reason.
+  const app = moduleFixture.createNestApplication({ rawBody: true });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   await app.init();
 

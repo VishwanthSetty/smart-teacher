@@ -1,5 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsPositive, IsString, MinLength } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsPositive, IsString, Max, Min, MinLength } from 'class-validator';
+import {
+  ACCEPTED_VIDEO_CONTENT_TYPES,
+  MAX_VIDEO_BYTES,
+  type AcceptedVideoContentType,
+} from '../video-ingest.constants';
 
 export class CreateVideoDto {
   @ApiProperty({ example: 'Grade 5 Maths — Fractions' })
@@ -12,13 +17,9 @@ export class CreateVideoDto {
   @IsString()
   description?: string;
 
-  // Provider-agnostic handle; the video adapter (F-19) resolves it to a playback URL.
-  // Never a signed URL — that would outlive the entitlement check that produced it.
-  @ApiProperty({ example: 'demo-g5-maths-01' })
-  @IsString()
-  @MinLength(1)
-  externalId!: string;
-
+  // No externalId: it is the playback handle the transcoder produces, and the source
+  // object key is derived server-side from the generated row id. Neither is the
+  // caller's to choose, so both are absent here and forbidNonWhitelisted rejects them.
   @ApiProperty({ required: false, example: 480 })
   @IsOptional()
   @IsInt()
@@ -34,4 +35,17 @@ export class CreateVideoDto {
   @IsString()
   @MinLength(1)
   subjectId!: string;
+
+  // Declared up front so an unacceptable file is refused *before* an upload URL exists,
+  // and so the type can be bound into the signature. Re-verified against the stored
+  // object at confirm time — this value is a request, not evidence.
+  @ApiProperty({ enum: ACCEPTED_VIDEO_CONTENT_TYPES, example: 'video/mp4' })
+  @IsIn(ACCEPTED_VIDEO_CONTENT_TYPES)
+  contentType!: AcceptedVideoContentType;
+
+  @ApiProperty({ example: 104857600, maximum: MAX_VIDEO_BYTES })
+  @IsInt()
+  @Min(1)
+  @Max(MAX_VIDEO_BYTES)
+  sizeBytes!: number;
 }

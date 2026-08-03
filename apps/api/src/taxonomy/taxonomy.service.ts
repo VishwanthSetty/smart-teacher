@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { Prisma, SubjectStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateGradeLevelDto } from './dto/create-grade-level.dto';
+import { UpdateGradeLevelDto } from './dto/update-grade-level.dto';
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { UpdateSubjectDto } from './dto/update-subject.dto';
 import { GradeLevelEntity } from './entities/grade-level.entity';
@@ -52,6 +53,56 @@ export class TaxonomyService {
     }
   }
 
+  async updateGradeLevel(id: string, dto: UpdateGradeLevelDto): Promise<GradeLevelEntity> {
+    const gradeLevel = await this.prisma.gradeLevel.findUnique({ where: { id }, select: { id: true } });
+    if (gradeLevel === null) {
+      throw new NotFoundException('Grade level not found');
+    }
+
+    try {
+      return await this.prisma.gradeLevel.update({
+        where: { id },
+        data: { name: dto.name, rank: dto.rank },
+        select: GRADE_LEVEL_SELECT,
+      });
+    } catch (error) {
+      // name and rank are separately @unique, same as createGradeLevel.
+      const field = conflictField(error);
+      if (field === 'rank') {
+        throw new ConflictException('A grade level with this rank already exists');
+      }
+      if (field !== null) {
+        throw new ConflictException('A grade level with this name already exists');
+      }
+      throw error;
+    }
+  }
+
+  async deleteGradeLevel(id: string): Promise<void> {
+    const gradeLevel = await this.prisma.gradeLevel.findUnique({ where: { id }, select: { id: true } });
+    if (gradeLevel === null) {
+      throw new NotFoundException('Grade level not found');
+    }
+
+    // Same root-at-the-referencing-model reasoning as updateSubject's retiring check
+    // above: SchoolContentEntitlement and Section are tenant-scoped, so counting them
+    // from a GradeLevel relation would route through the tenant guard's relation walker
+    // and either throw MissingTenantContextError (SUPER_ADMIN has no schoolId) or answer
+    // "in this one tenant" — the wrong question for a platform-wide check.
+    const [videoCount, entitlementCount, sectionCount] = await this.prisma.$transaction([
+      this.prisma.video.count({ where: { gradeLevelId: id } }),
+      this.prisma.schoolContentEntitlement.count({ where: { gradeLevelId: id } }),
+      this.prisma.section.count({ where: { gradeLevelId: id } }),
+    ]);
+    if (videoCount > 0 || entitlementCount > 0 || sectionCount > 0) {
+      throw new ConflictException(
+        'This grade level is still used by platform videos, school entitlements or sections',
+      );
+    }
+
+    await this.prisma.gradeLevel.delete({ where: { id } });
+  }
+
   // Every subject, retired included — the admin surface needs to see a retired row to
   // reactivate it. The shared read path is findActiveSubjects.
   findAllSubjects(): Promise<SubjectEntity[]> {
@@ -98,18 +149,19 @@ export class TaxonomyService {
       // retiring a referenced subject would strand live videos and school grants behind
       // a subject nothing can reach. Timetable slots join this list when F-08 lands.
       //
-      // Both counts are rooted at the referencing model on purpose. Asking
+      // All three counts are rooted at the referencing model on purpose. Asking
       // `subject.count({ where: { entitlements: { some: {} } } })` instead would route
       // through the tenant guard's relation walker, which either throws
       // MissingTenantContextError (SUPER_ADMIN has no schoolId) or answers "entitlements
       // in this one tenant" — the wrong question for a platform-wide check.
-      const [videoCount, entitlementCount] = await this.prisma.$transaction([
+      const [videoCount, entitlementCount, assignmentCount] = await this.prisma.$transaction([
         this.prisma.video.count({ where: { subjectId: id } }),
         this.prisma.schoolContentEntitlement.count({ where: { subjectId: id } }),
+        this.prisma.teacherAssignment.count({ where: { subjectId: id } }),
       ]);
-      if (videoCount > 0 || entitlementCount > 0) {
+      if (videoCount > 0 || entitlementCount > 0 || assignmentCount > 0) {
         throw new ConflictException(
-          'This subject is still used by platform videos or school entitlements',
+          'This subject is still used by platform videos, school entitlements or teacher assignments',
         );
       }
     }

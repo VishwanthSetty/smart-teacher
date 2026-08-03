@@ -15,8 +15,8 @@ export async function login(
   return response.body.accessToken;
 }
 
-// One seeded account per role (apps/api/prisma/seed.ts), so the RBAC matrix can iterate
-// Object.values(Role) without hardcoding emails at each call site.
+// One fixture account per role (provisioned by ./global-setup.ts), so the RBAC matrix can
+// iterate Object.values(Role) without hardcoding emails at each call site.
 export const SEED_ACCOUNTS: Record<Role, { email: string; schoolSlug?: string }> = {
   [Role.SUPER_ADMIN]: { email: 'superadmin@smartteacher.dev' },
   [Role.SCHOOL_ADMIN]: { email: 'admin@smartteacher.dev', schoolSlug: 'demo-school' },

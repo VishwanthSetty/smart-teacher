@@ -16,6 +16,63 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    # noeviction is not optional: BullMQ's job state *is* the data. Under the default
+    # allkeys-lru, memory pressure silently evicts job hashes and locks — jobs vanish
+    # mid-flight with nothing in any log to explain it.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-smartteacher}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-smartteacher}
+      # Presigned uploads and playback segments are non-credentialed capabilities.
+      # Redirected media requests carry Origin: null, so allowing only the web origin
+      # breaks hls.js. MinIO has no `mc cors set`; use its server-level wildcard here.
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: creates the ingest bucket. Browser CORS is handled by the server-level
+  # MINIO_API_CORS_ALLOW_ORIGIN above, not here.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-smartteacher}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-smartteacher}
+      S3_INGEST_BUCKET: ${S3_INGEST_BUCKET:-ingest-bucket}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} &&
+      mc mb --ignore-existing local/$${S3_INGEST_BUCKET} &&
+      echo 'MinIO ingest bucket ready'
+      "
+
   api:
     build:
       context: .
@@ -36,10 +93,33 @@ services:
       SMTP_PASS: ${SMTP_PASS}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Smart Teacher}
       MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS}
+      # Two endpoints: this container reaches MinIO in-network, but presigned URLs must
+      # be signed for the origin the user's browser will PUT to.
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-smartteacher}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-smartteacher}
+      S3_INGEST_BUCKET: ${S3_INGEST_BUCKET:-ingest-bucket}
+      S3_FORCE_PATH_STYLE: "true"
+      S3_UPLOAD_URL_EXPIRY_SECS: ${S3_UPLOAD_URL_EXPIRY_SECS:-900}
+      S3_DOWNLOAD_URL_EXPIRY_SECS: ${S3_DOWNLOAD_URL_EXPIRY_SECS:-300}
+      RETAIN_INGEST_SOURCE: ${RETAIN_INGEST_SOURCE:-true}
+      PLAYBACK_TOKEN_SECRET: ${PLAYBACK_TOKEN_SECRET:-dev-playback-token-secret-4f1c9a27be3d05e8}
+      PLAYBACK_TOKEN_TTL_SECS: ${PLAYBACK_TOKEN_TTL_SECS:-14400}
+      REDIS_URL: redis://redis:6379
+      TRANSCODE_QUEUE_NAME: ${TRANSCODE_QUEUE_NAME:-transcode}
+      WORKER_CALLBACK_SECRET: ${WORKER_CALLBACK_SECRET:-dev-worker-callback-secret-4f1c9a27be3d05e8}
+      TRANSCODE_CALLBACK_SKEW_SECS: ${TRANSCODE_CALLBACK_SKEW_SECS:-300}
+      TRANSCODE_STALE_AFTER_MINS: ${TRANSCODE_STALE_AFTER_MINS:-45}
     ports:
       - "4000:4000"
     depends_on:
       postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health || exit 1"]
@@ -47,6 +127,56 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+
+  # The transcode consumer. In the default profile deliberately: without it nothing ever
+  # reaches READY locally, which is the whole point of the pipeline.
+  #
+  # The identical image runs on a laptop or a cloud VM — only these env values differ. It
+  # accepts no inbound connections (no ports, no EXPOSE), reaching out to Redis, MinIO and
+  # the API instead, which is what lets a worker behind NAT join this queue untunnelled.
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
+    environment:
+      REDIS_URL: redis://redis:6379
+      TRANSCODE_QUEUE_NAME: ${TRANSCODE_QUEUE_NAME:-transcode}
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: ${S3_REGION:-us-east-1}
+      # In production scope this credential to s3:GetObject on */source.mp4 and
+      # s3:PutObject/DeleteObject on videos/* — never a root key. A worker box is trusted
+      # but it is still the least-controlled machine in the system.
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-smartteacher}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-smartteacher}
+      S3_INGEST_BUCKET: ${S3_INGEST_BUCKET:-ingest-bucket}
+      S3_FORCE_PATH_STYLE: "true"
+      CALLBACK_URL: http://api:4000/internal/transcode/callback
+      WORKER_CALLBACK_SECRET: ${WORKER_CALLBACK_SECRET:-dev-worker-callback-secret-4f1c9a27be3d05e8}
+      CONCURRENCY: ${TRANSCODE_CONCURRENCY:-2}
+      RENDITION_LADDER: ${RENDITION_LADDER:-360p:360:800k:96k,720p:720:2500k:128k}
+      HWACCEL: ${HWACCEL:-none}
+      WORK_DIR: /scratch
+    # Deliberately not depends_on api: the callback client retries, and coupling worker
+    # startup to API readiness buys nothing but a slower cold start.
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      # Sized deliberately: CONCURRENCY x (source + HLS output). Two concurrent 2 GB
+      # sources is roughly 10 GB.
+      - worker_scratch:/scratch
+    healthcheck:
+      # No port to probe, so liveness is the heartbeat file's mtime. A stale one means a
+      # wedged event loop — which is also precisely what would stop BullMQ renewing job
+      # locks, so this catches the failure that matters most.
+      test: ["CMD", "node", "-e", "const{statSync}=require('fs');process.exit(Date.now()-statSync('/scratch/.heartbeat').mtimeMs<60000?0:1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   web:
     build:
@@ -56,6 +186,7 @@ services:
     environment:
       NODE_ENV: production
       API_URL: http://api:4000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
     ports:
       - "3000:3000"
     depends_on:
@@ -64,3 +195,6 @@ services:
 
 volumes:
   postgres_data:
+  minio_data:
+  redis_data:
+  worker_scratch:

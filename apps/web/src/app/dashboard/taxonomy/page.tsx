@@ -1,13 +1,13 @@
 import { redirect } from 'next/navigation';
-import { Layers } from 'lucide-react';
 import { SubjectStatus } from '@smart-teacher/shared-types';
-import { apiListSubjects } from '@/lib/api-client';
+import { apiListAdminGradeLevels, apiListSubjects } from '@/lib/api-client';
 import { canRoleAccess } from '@/lib/nav';
 import { getAccessToken, requireUser } from '@/lib/session';
 import { PageHeader } from '@/components/ui/page-header';
-import { EmptyState } from '@/components/ui/empty-state';
 import { CreateSubjectForm } from './_components/create-subject-form';
 import { SubjectRowActions } from './_components/subject-row-actions';
+import { CreateGradeLevelForm } from './_components/create-grade-level-form';
+import { GradeLevelRow } from './_components/grade-level-row';
 
 const ROUTE = '/dashboard/taxonomy';
 
@@ -23,6 +23,7 @@ export default async function TaxonomyPage() {
   // The admin list, so retired subjects appear here and can be reactivated. The
   // canonical GET /subjects that schools read excludes them.
   const subjects = await apiListSubjects(getAccessToken() ?? '');
+  const gradeLevels = await apiListAdminGradeLevels(getAccessToken() ?? '');
 
   return (
     <div className="flex flex-col gap-6">
@@ -75,13 +76,32 @@ export default async function TaxonomyPage() {
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium">Grade levels</h2>
-        {/* EmptyState rather than ComingSoon: ComingSoon renders its own PageHeader,
-            which would put a second <h1> on this page. */}
-        <EmptyState
-          icon={<Layers className="h-8 w-8" aria-hidden="true" />}
-          title="Coming soon"
-          description="Grade levels are managed through the API for now. Editing them here lands in a later pass."
-        />
+
+        <CreateGradeLevelForm />
+
+        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-gray-200 text-gray-500">
+              <tr>
+                <th className="px-4 py-3 font-medium">Name</th>
+                <th className="px-4 py-3 font-medium">Rank</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {gradeLevels.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-4 py-6 text-center text-gray-500">
+                    No grade levels yet.
+                  </td>
+                </tr>
+              )}
+              {gradeLevels.map((gradeLevel) => (
+                <GradeLevelRow key={gradeLevel.id} gradeLevel={gradeLevel} />
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );

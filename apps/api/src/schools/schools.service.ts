@@ -117,6 +117,28 @@ export class SchoolsService {
     };
   }
 
+  async findOne(id: string): Promise<SchoolEntity> {
+    const school = await this.prisma.school.findUnique({
+      where: { id },
+      // Oldest SCHOOL_ADMIN is treated as the school's primary admin for display.
+      include: {
+        users: {
+          where: { role: Role.SCHOOL_ADMIN },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+          select: { email: true },
+        },
+      },
+    });
+
+    if (!school) {
+      throw new NotFoundException('School not found');
+    }
+
+    const { users, ...rest } = school;
+    return SchoolEntity.fromModel(rest, users[0]?.email ?? null);
+  }
+
   async update(id: string, dto: UpdateSchoolDto): Promise<SchoolEntity> {
     const school = await this.prisma.school.findUnique({ where: { id } });
     if (!school) {

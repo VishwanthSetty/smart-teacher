@@ -12,6 +12,8 @@ const user: User = {
   email: 'teacher@smartteacher.dev',
   passwordHash: 'hash',
   name: 'Tom Teacher',
+  firstName: null,
+  lastName: null,
   role: Role.TEACHER,
   status: UserStatus.ACTIVE,
   inviteTokenHash: null,

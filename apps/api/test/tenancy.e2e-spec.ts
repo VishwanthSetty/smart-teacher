@@ -1,5 +1,5 @@
 import { INestApplication, NotFoundException } from '@nestjs/common';
-import { Role, School, UserStatus } from '@prisma/client';
+import { Role, School, UserStatus, VideoStatus } from '@prisma/client';
 import request from 'supertest';
 import { PrismaService } from '../src/prisma/prisma.service';
 import {
@@ -246,14 +246,24 @@ describe('Tenant isolation (e2e)', () => {
         prisma.schoolContentEntitlement.findFirstOrThrow({}),
       );
 
+      // status: READY on both is load-bearing, not incidental. Every school-facing read
+      // narrows to READY on top of the entitlement check, so picking an in-flight ingest
+      // row here would make "entitled" 404 for the wrong reason and "unentitled" pass
+      // vacuously — the status filter would be doing work the entitlement check is
+      // supposed to be proving. Any ingest row left in the database by another suite (or
+      // by hand) is enough to select one, since findFirstOrThrow imposes no order.
       const entitled = await tenantContext.runWithSystemBypass(() =>
         prisma.video.findFirstOrThrow({
-          where: { gradeLevelId: entitlement.gradeLevelId, subjectId: entitlement.subjectId },
+          where: {
+            gradeLevelId: entitlement.gradeLevelId,
+            subjectId: entitlement.subjectId,
+            status: VideoStatus.READY,
+          },
         }),
       );
       const unentitled = await tenantContext.runWithSystemBypass(() =>
         prisma.video.findFirstOrThrow({
-          where: { NOT: { subjectId: entitlement.subjectId } },
+          where: { NOT: { subjectId: entitlement.subjectId }, status: VideoStatus.READY },
         }),
       );
 
