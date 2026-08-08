@@ -8,20 +8,20 @@ function context(request: object): ExecutionContext {
 }
 
 describe('PlaybackTokenGuard', () => {
-  it('does nothing on ordinary routes', () => {
+  it('does nothing on ordinary routes', async () => {
     const tokens = { verify: jest.fn() };
     const guard = new PlaybackTokenGuard({ getAllAndOverride: jest.fn().mockReturnValue(false) } as unknown as Reflector, tokens as unknown as PlaybackTokenService);
-    expect(guard.canActivate(context({}))).toBe(true);
+    await expect(guard.canActivate(context({}))).resolves.toBe(true);
     expect(tokens.verify).not.toHaveBeenCalled();
   });
 
-  it('rejects missing and array tokens and verifies against the route video id', () => {
-    const tokens = { verify: jest.fn() };
+  it('rejects missing and array tokens and verifies against the route video id', async () => {
+    const tokens = { verify: jest.fn().mockResolvedValue(undefined) };
     const reflector = { getAllAndOverride: jest.fn().mockReturnValue(true) } as unknown as Reflector;
     const guard = new PlaybackTokenGuard(reflector, tokens as unknown as PlaybackTokenService);
-    expect(() => guard.canActivate(context({ params: { id: 'a' }, query: { t: ['x'] } }))).toThrow(UnauthorizedException);
+    await expect(guard.canActivate(context({ params: { id: 'a' }, query: { t: ['x'] } }))).rejects.toBeInstanceOf(UnauthorizedException);
     const request = { params: { id: 'video-a' }, query: { t: 'token' } };
-    expect(guard.canActivate(context(request))).toBe(true);
+    await expect(guard.canActivate(context(request))).resolves.toBe(true);
     expect(tokens.verify).toHaveBeenCalledWith('token', 'video-a');
     expect(request).toHaveProperty('playbackToken', 'token');
   });

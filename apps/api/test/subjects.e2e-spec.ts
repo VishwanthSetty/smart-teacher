@@ -27,7 +27,7 @@ describe('Subjects (e2e)', () => {
   let createdId: string;
   let mathsId: string;
   let grade5Id: string;
-  let schoolBId: string;
+  let schemaId: string;
 
   const asSuperAdmin = () => tokens[Role.SUPER_ADMIN];
   const get = (path: string, token: string) =>
@@ -38,19 +38,10 @@ describe('Subjects (e2e)', () => {
       .set('Authorization', `Bearer ${asSuperAdmin()}`)
       .send(body);
 
-  // Searched, not read off page 1: /admin/schools is paginated newest-first and other
-  // suites create schools, so the seeded ones do not stay on the first page.
-  async function findSchoolId(slug: string): Promise<string> {
-    const res = await get(`/admin/schools?search=${slug}`, asSuperAdmin()).expect(200);
-    const school = res.body.data.find((s: { slug: string }) => s.slug === slug);
-    if (!school) {
-      throw new Error(`School fixture "${slug}" is missing`);
-    }
-    return school.id;
-  }
-
   beforeAll(async () => {
-    await seedContentFixtures();
+    const fixtures = await seedContentFixtures();
+    schemaId = fixtures.schemaId;
+
     app = await createE2eApp();
     tokens = await loginAllRoles(app);
 
@@ -60,7 +51,6 @@ describe('Subjects (e2e)', () => {
     ]);
     mathsId = subjects.body.find((s: Subject) => s.code === 'maths').id;
     grade5Id = grades.body.find((g: { name: string }) => g.name === 'Grade 5').id;
-    schoolBId = await findSchoolId('demo-school-b');
 
     const created = await request(app.getHttpServer())
       .post('/admin/subjects')
@@ -133,27 +123,14 @@ describe('Subjects (e2e)', () => {
       });
     });
 
-    it('409s a video that names it', async () => {
+    // Content and entitlements now reach a subject only through Curriculum, so this is
+    // where "a retired subject takes no new content" is enforced: no curriculum means no
+    // node to file a video against and nothing to grant a school.
+    it('409s a curriculum that names it', async () => {
       await request(app.getHttpServer())
-        .post('/admin/videos')
+        .post('/admin/curricula')
         .set('Authorization', `Bearer ${asSuperAdmin()}`)
-        .send({
-          title: 'Should not be created',
-          gradeLevelId: grade5Id,
-          subjectId: createdId,
-          contentType: 'video/mp4',
-          sizeBytes: 1024,
-        })
-        .expect(409);
-    });
-
-    // The grant never succeeds, so the seed's deliberate "school B holds nothing"
-    // asymmetry is untouched by this test.
-    it('409s an entitlement grant that names it', async () => {
-      await request(app.getHttpServer())
-        .post(`/admin/schools/${schoolBId}/entitlements`)
-        .set('Authorization', `Bearer ${asSuperAdmin()}`)
-        .send({ gradeLevelId: grade5Id, subjectId: createdId })
+        .send({ gradeLevelId: grade5Id, subjectId: createdId, schemaId })
         .expect(409);
     });
 

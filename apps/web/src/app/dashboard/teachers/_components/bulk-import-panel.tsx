@@ -17,12 +17,17 @@ export function BulkImportPanel() {
   const [step, setStep] = useState<Step>({ name: 'upload' });
   const [error, setError] = useState<string | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [sendCredentialsEmail, setSendCredentialsEmail] = useState(false);
 
   async function handleConfirm(batchId: string) {
     setError(null);
     setIsConfirming(true);
 
-    const response = await fetch(`/api/teachers/bulk/${batchId}/confirm`, { method: 'POST' });
+    const response = await fetch(`/api/teachers/bulk/${batchId}/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sendCredentialsEmail }),
+    });
 
     setIsConfirming(false);
 
@@ -58,15 +63,18 @@ export function BulkImportPanel() {
       )}
 
       {step.name === 'preview' && (
-        <ImportPreviewTable
-          preview={step.preview}
-          isConfirming={isConfirming}
-          onConfirm={() => handleConfirm(step.preview.batchId)}
-          onCancel={() => {
-            setError(null);
-            setStep({ name: 'upload' });
-          }}
-        />
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" checked={sendCredentialsEmail} onChange={(e) => setSendCredentialsEmail(e.target.checked)} className="rounded border-gray-300" />
+            Email credentials
+          </label>
+          <ImportPreviewTable
+            preview={step.preview}
+            isConfirming={isConfirming}
+            onConfirm={() => handleConfirm(step.preview.batchId)}
+            onCancel={() => { setError(null); setStep({ name: 'upload' }); }}
+          />
+        </div>
       )}
 
       {step.name === 'done' && (

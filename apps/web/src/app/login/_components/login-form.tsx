@@ -92,7 +92,10 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
         {isSubmitting ? 'Signing in…' : 'Sign in'}
       </button>
 
-      <Link href="/forgot-password" className="block text-center text-sm font-medium text-gray-900 underline">
+      <Link
+        href={schoolSlug ? `/forgot-password?schoolSlug=${encodeURIComponent(schoolSlug)}` : '/forgot-password'}
+        className="block text-center text-sm font-medium text-gray-900 underline"
+      >
         Forgot password?
       </Link>
     </form>

@@ -11,6 +11,7 @@ const user: User = {
   id: 'user-1',
   email: 'teacher@smartteacher.dev',
   passwordHash: 'hash',
+  plainPassword: null,
   name: 'Tom Teacher',
   firstName: null,
   lastName: null,

@@ -1,22 +1,129 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Video } from 'lucide-react';
+import { BookOpen } from 'lucide-react';
+import { Role, type Curriculum } from '@smart-teacher/shared-types';
+import { apiListMyCurricula } from '@/lib/api-client';
 import { canRoleAccess } from '@/lib/nav';
-import { requireUser } from '@/lib/session';
-import { ComingSoon } from '@/components/ui/coming-soon';
+import { getAccessToken, requireUser } from '@/lib/session';
+import { EmptyState } from '@/components/ui/empty-state';
+import { PageHeader } from '@/components/ui/page-header';
 
 const ROUTE = '/dashboard/videos';
 
-export default async function VideosPage() {
-  const user = await requireUser();
-  if (!canRoleAccess(user.role, ROUTE)) {
-    redirect('/dashboard');
+interface GradeLevelGroup {
+  id: string;
+  name: string;
+  curricula: Curriculum[];
+}
+
+function groupByGradeLevel(curricula: Curriculum[]): GradeLevelGroup[] {
+  const groups = new Map<string, GradeLevelGroup>();
+  for (const curriculum of curricula) {
+    const group = groups.get(curriculum.gradeLevelId) ?? {
+      id: curriculum.gradeLevelId,
+      name: curriculum.gradeLevelName,
+      curricula: [],
+    };
+    group.curricula.push(curriculum);
+    groups.set(curriculum.gradeLevelId, group);
   }
+  return [...groups.values()];
+}
+
+export default async function VideosPage({
+  searchParams,
+}: {
+  searchParams: { gradeLevelId?: string };
+}) {
+  const user = await requireUser();
+  if (!canRoleAccess(user.role, ROUTE)) redirect('/dashboard');
+
+  const curricula = await apiListMyCurricula(getAccessToken() ?? '');
+  const isStudent = user.role === Role.STUDENT;
+  const isSchoolAdmin = user.role === Role.SCHOOL_ADMIN;
+  const gradeLevelName = curricula[0]?.gradeLevelName;
+  const gradeLevels = groupByGradeLevel(curricula);
+  const selectedGradeLevel = isSchoolAdmin
+    ? gradeLevels.find((gradeLevel) => gradeLevel.id === searchParams.gradeLevelId)
+    : undefined;
+  const visibleCurricula = selectedGradeLevel?.curricula ?? curricula;
 
   return (
-    <ComingSoon
-      title="Videos"
-      description="Upload lesson recordings and share them with classes."
-      icon={<Video className="h-8 w-8" aria-hidden="true" />}
-    />
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={isStudent ? 'My Subjects' : selectedGradeLevel?.name ?? 'Videos'}
+        description={
+          isStudent
+            ? [gradeLevelName, user.school?.name].filter(Boolean).join(' · ')
+            : selectedGradeLevel
+              ? 'Choose a subject to browse its lessons.'
+              : isSchoolAdmin
+                ? 'Choose a grade level to view its licensed subjects.'
+                : 'Every lesson your school is licensed for.'
+        }
+        action={
+          selectedGradeLevel ? (
+            <Link
+              href={ROUTE}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
+            >
+              Back to grade levels
+            </Link>
+          ) : undefined
+        }
+      />
+      {curricula.length === 0 ? (
+        <EmptyState
+          icon={<BookOpen className="h-8 w-8" aria-hidden="true" />}
+          title="No curricula yet"
+          description="No published curriculum is available to you. Ask your school administrator once your class is set up."
+        />
+      ) : isSchoolAdmin && !selectedGradeLevel ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {gradeLevels.map((gradeLevel) => {
+            const videoCount = gradeLevel.curricula.reduce(
+              (total, curriculum) => total + curriculum.videoCount,
+              0,
+            );
+            return (
+              <Link
+                key={gradeLevel.id}
+                href={`${ROUTE}?gradeLevelId=${encodeURIComponent(gradeLevel.id)}`}
+                className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition hover:border-gray-400"
+              >
+                <h2 className="font-medium text-gray-900">{gradeLevel.name}</h2>
+                <p className="text-sm text-gray-500">
+                  {gradeLevel.curricula.length}{' '}
+                  {gradeLevel.curricula.length === 1 ? 'subject' : 'subjects'}
+                </p>
+                <p className="text-sm text-gray-500">
+                  {videoCount} {videoCount === 1 ? 'video' : 'videos'}
+                </p>
+              </Link>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {visibleCurricula.map((curriculum) => (
+            <Link
+              key={curriculum.id}
+              href={`${ROUTE}/${curriculum.id}`}
+              className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition hover:border-gray-400"
+            >
+              <h2 className="font-medium text-gray-900">{curriculum.subjectName}</h2>
+              <p className="text-sm text-gray-500">
+                {isStudent || selectedGradeLevel
+                  ? `${curriculum.nodeCount} ${curriculum.nodeCount === 1 ? 'chapter' : 'chapters'}`
+                  : curriculum.gradeLevelName}
+              </p>
+              <p className="text-sm text-gray-500">
+                {curriculum.videoCount} {curriculum.videoCount === 1 ? 'video' : 'videos'}
+              </p>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

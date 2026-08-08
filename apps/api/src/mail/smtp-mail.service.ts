@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createTransport, Transporter } from 'nodemailer';
-import { MailService, PasswordReset, UserInvite } from './mail.service';
+import { MailService, PasswordReset, SchoolAdminWelcome, UserCredentials, UserInvite } from './mail.service';
 
 interface MailMessage {
   to: string;
@@ -68,6 +68,39 @@ export class SmtpMailService extends MailService {
         <p>This link expires in 1 hour. If you didn't request this, you can ignore this email.</p>
       `,
       text: `Hi ${reset.name},\n\nReset your password: ${link}\n\nThis link expires in 1 hour. If you didn't request this, you can ignore this email.`,
+    });
+  }
+
+  async sendSchoolAdminWelcome(welcome: SchoolAdminWelcome): Promise<void> {
+    const webAppUrl = this.configService.getOrThrow<string>('WEB_APP_URL');
+    const link = `${webAppUrl}/login?school=${welcome.schoolSlug}`;
+
+    await this.send({
+      to: welcome.email,
+      subject: `Your Smart Teacher account for ${welcome.schoolName} is ready`,
+      html: `
+        <p>Hi ${welcome.name},</p>
+        <p>Your Smart Teacher account for <strong>${welcome.schoolName}</strong> is ready.</p>
+        <p><a href="${link}">Sign in</a> with the password your administrator gave you.</p>
+      `,
+      text: `Hi ${welcome.name},\n\nYour Smart Teacher account for ${welcome.schoolName} is ready.\n\nSign in: ${link}\n\nUse the password your administrator gave you.`,
+    });
+  }
+
+  async sendCredentials(credentials: UserCredentials): Promise<void> {
+    const webAppUrl = this.configService.getOrThrow<string>('WEB_APP_URL');
+    const link = `${webAppUrl}/login?school=${credentials.schoolSlug}`;
+
+    await this.send({
+      to: credentials.email,
+      subject: `Your Smart Teacher credentials for ${credentials.schoolName}`,
+      html: `
+        <p>Hi ${credentials.name},</p>
+        <p>Your Smart Teacher account for <strong>${credentials.schoolName}</strong> is ready.</p>
+        <p>Email: <strong>${credentials.email}</strong><br>Password: <strong>${credentials.password}</strong></p>
+        <p><a href="${link}">Sign in</a> and change your password after your first login.</p>
+      `,
+      text: `Hi ${credentials.name},\n\nYour Smart Teacher account for ${credentials.schoolName} is ready.\n\nEmail: ${credentials.email}\nPassword: ${credentials.password}\n\nSign in: ${link}\n\nPlease change your password after your first login.`,
     });
   }
 

@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { PasswordInput } from '@/components/ui/password-input';
 
 export function CreateSchoolForm() {
   const router = useRouter();
@@ -10,18 +11,34 @@ export function CreateSchoolForm() {
   const [academicYear, setAcademicYear] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [adminName, setAdminName] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [sendInvite, setSendInvite] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+
+    if (!adminPassword && !sendInvite) {
+      setError('Set an initial password or send an invite email so the admin can sign in');
+      return;
+    }
+
     setIsSubmitting(true);
 
     const response = await fetch('/api/schools', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, slug, academicYear, adminEmail, adminName }),
+      body: JSON.stringify({
+        name,
+        slug,
+        academicYear,
+        adminEmail,
+        adminName,
+        ...(adminPassword ? { adminPassword } : {}),
+        sendInvite,
+      }),
     });
 
     setIsSubmitting(false);
@@ -37,6 +54,8 @@ export function CreateSchoolForm() {
     setAcademicYear('');
     setAdminEmail('');
     setAdminName('');
+    setAdminPassword('');
+    setSendInvite(true);
     router.refresh();
   }
 
@@ -118,6 +137,33 @@ export function CreateSchoolForm() {
             onChange={(e) => setAdminEmail(e.target.value)}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
           />
+        </div>
+
+        <div className="space-y-1 sm:col-span-2">
+          <label htmlFor="adminPassword" className="block text-sm font-medium text-gray-700">
+            Initial password (optional)
+          </label>
+          <PasswordInput
+            id="adminPassword"
+            value={adminPassword}
+            onChange={(e) => setAdminPassword(e.target.value)}
+            minLength={8}
+            placeholder="Leave blank to let the admin set one via the invite email"
+          />
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={sendInvite}
+              onChange={(e) => setSendInvite(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            {adminPassword
+              ? 'Email the admin a welcome notice'
+              : 'Send invite email (required if no password is set)'}
+          </label>
         </div>
       </div>
 

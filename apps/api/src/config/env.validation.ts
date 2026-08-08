@@ -1,5 +1,5 @@
 import { plainToInstance, Transform } from 'class-transformer';
-import { IsBoolean, IsInt, IsString, Max, Min, MinLength, validateSync } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsString, Max, Min, MinLength, validateSync } from 'class-validator';
 
 class EnvironmentVariables {
   @IsInt()
@@ -106,16 +106,26 @@ class EnvironmentVariables {
   @IsBoolean()
   RETAIN_INGEST_SOURCE: boolean = true;
 
-  // Dedicated because playback tokens travel in URLs and therefore have a different
-  // exposure boundary from API access tokens and worker callback signatures.
+  @IsIn(['api', 'edge'])
+  PLAYBACK_DELIVERY_MODE: 'api' | 'edge' = 'api';
+
   @IsString()
-  @MinLength(32)
-  PLAYBACK_TOKEN_SECRET: string = 'dev-playback-token-secret-change-me-32-chars';
+  PLAYBACK_API_ORIGIN: string = 'http://localhost:4000';
+
+  @IsString()
+  PLAYBACK_EDGE_ORIGIN: string = 'http://localhost:8787';
+
+  @IsString()
+  PLAYBACK_SIGNING_KEY_ID: string = 'dev-1';
+
+  @IsString()
+  @MinLength(100)
+  PLAYBACK_SIGNING_PRIVATE_KEY_B64: string = 'LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JR0hBZ0VBTUJNR0J5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEJHMHdhd0lCQVFRZ1RMMjVSR29waWhaQms3cDMKUjBnU0tKc3pIUFZ5YXloTGM3M3c4ZXg0YnVDaFJBTkNBQVR0THRRL2lkbHQ4am00QldjdTJMdHZJaTMvalA5dwpKdTFIdDFqdE0veTNVMWZxcWZHemlxcml2UDhmRUNUUGlpZHhadGhsbnY2NHRxcVlOVlVNZjBjbQotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tCg==';
 
   @IsInt()
-  @Min(900)
-  @Max(43200)
-  PLAYBACK_TOKEN_TTL_SECS: number = 14400;
+  @Min(60)
+  @Max(900)
+  PLAYBACK_TOKEN_TTL_SECS: number = 600;
 
   // Transcode pipeline. The API only *produces* jobs and receives callbacks; the worker
   // that consumes them is a separate process (apps/worker) with its own env class.

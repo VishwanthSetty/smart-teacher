@@ -4,7 +4,7 @@ Guidance for Claude Code (claude.ai/code) when working in this repository.
 
 ## What this is
 
-The **Smart Teacher** platform. Auth, RBAC, multi-tenancy, invites, schools, taxonomy, platform content/entitlements, videos and a dashboard shell exist. Classes, enrollments and timetables do not.
+The **Smart Teacher** platform. Auth, RBAC, multi-tenancy, invites, schools, taxonomy, platform content/entitlements, videos, classes, enrollments and a dashboard shell exist. Timetables do not.
 
 **Prime directive:** mirror the existing NestJS module and Next.js App Router patterns. Do not introduce a new pattern, library, or folder convention when an established one already covers the case. If a new pattern is genuinely warranted, say so and explain why *before* writing code.
 
@@ -54,6 +54,8 @@ npm run dev
 
 **Two layers of env files.** Root `.env` feeds `docker-compose.yml`; `apps/api/.env` and `apps/web/.env` feed the natively-run apps. The API validates env at boot via `config/env.validation.ts` (class-validator) — a missing/invalid var throws on startup. Use `ConfigService.getOrThrow` downstream; **never read `process.env` outside the config module.**
 
+**`npm run test:e2e` uses a third, isolated database** — `apps/api/.env.test`, pointed at a separate `smartteacher_test` database, never the dev/docker-compose one. `AppModule`'s `ConfigModule.forRoot` picks `.env.test` over `.env` whenever `NODE_ENV === 'test'` (which Jest sets automatically). `test/utils/global-setup.ts` also loads `.env.test` explicitly, first thing, with `override: true` — `@prisma/client` does its own implicit `.env` lookup the moment it's constructed, and since `dotenv` never overrides an already-set var, skipping this step would let that dev `.env` win and silently point e2e writes back at the dev database. Create the test DB once (`CREATE DATABASE smartteacher_test;` on the same Postgres) and run `DATABASE_URL=<test-db-url> npx prisma migrate deploy` from `apps/api` after any new migration — e2e specs create real rows and never clean up, by design, so they must never share a database with `npm run dev` / `docker compose up`.
+
 **The seed creates exactly one account** (`apps/api/prisma/seed.ts`): `superadmin@smartteacher.dev` / `Passw0rd!`, SUPER_ADMIN, no school. It is the only account that cannot be created through the product — a super admin has no tenant, so nobody above them can invite them.
 
 **Nothing else is seeded** — no schools, school users, grade levels, subjects, videos, content entitlements, sections or enrolments. A fresh environment starts empty and an operator creates them through the app, so the seed can never drift from what real onboarding produces. **Do not add fixtures back to `seed.ts`;** they belong in `apps/api/test/utils/`.
@@ -67,7 +69,7 @@ npm run dev
 
 `global-setup.ts` resets password, role and status on every run rather than using `update: {}` — the auth suites disable accounts, reset passwords and suspend schools, so a run that failed part-way would otherwise poison later runs.
 
-`teacher-b@` exists because "watch entitled videos" is a TEACHER/STUDENT capability — proving an unentitled school sees an empty library over HTTP needs a non-admin in that tenant.
+`teacher-b@` exists to prove an unentitled school sees an empty library over HTTP through a non-admin caller; SCHOOL_ADMIN, TEACHER and STUDENT can browse/watch entitled content.
 
 Entitlements in `content-fixtures.ts` are **deliberately asymmetric** — `demo-school` holds exactly one, `(Grade 5, Mathematics)`; `demo-school-b` holds none. Entitlement tests assert that asymmetry, so granting more makes them pass vacuously.
 
@@ -239,8 +241,12 @@ The platform is multi-tenant. Before writing a line, confirm — **if any answer
 
 **Nested relations are scoped too, with two shapes refused outright.** Prisma's hook fires only for a query's *root* model, so `tenant-scope.util.ts` walks `where`, `include`/`select` and `data`: a to-many include of a tenant-scoped model gets `schoolId` AND-ed into its nested `where`, and relation filters (`some`/`none`) are scoped the same way. Two shapes have no safe rewrite and throw `UnsupportedTenantNestedOperationError` rather than silently pass — a **to-one include** of a tenant-scoped model from a non-scoped parent (a to-one include takes no `where`, so it can't be filtered), and **any nested write** into a tenant-scoped model from a non-scoped parent (`school.update({ where: { id: B }, data: { users: { create } } })` takes its tenant from the parent row, which the guard can't constrain). Write against the child model directly, where stamping and the mismatch check apply.
 
-**Platform content is the reviewed exception to "everything has `school_id`".** `GradeLevel`, `Subject` and `Video` are global, listed in `PLATFORM_GLOBAL_MODELS`; a school reaches them only through `SchoolContentEntitlement`, which *is* tenant-scoped. `ContentEntitlementsService` (`apps/api/src/entitlements/`) is the gate — it takes no school id, because the tenant guard supplies it.
+**Platform content is the reviewed exception to "everything has `school_id`".** `GradeLevel`, `Subject` and `Video` are global, listed in `PLATFORM_GLOBAL_MODELS`; a school reaches them only through `SchoolContentEntitlement`, which *is* tenant-scoped. `ContentEntitlementsService` (`apps/api/src/entitlements/`) is the gate — it takes no school id, because the tenant guard supplies it. SCHOOL_ADMIN, TEACHER and STUDENT may browse/watch entitled content; authoring remains SUPER_ADMIN-only.
 
 **Every content read resolves its scope through `ActorContentScopeService`** (same folder), the one answer to "which `(gradeLevel, subject)` pairs may this actor reach?". `VideosAccessPolicy` and `VideosService.findAllVisibleTo` both go through it, so a single-video read can never be wider than the list; its `includes()` derives from `resolve()` rather than calling `isEntitled` directly for exactly that reason. **STUDENT is narrowed**: `resolve()` intersects the school's entitlements with the pairs matching the student's `EnrollmentsService.activeGradeLevelIdFor` grade level (`apps/api/src/students/`) — no active enrollment resolves to an empty scope, never the school-wide set. **TEACHER narrowing is still deferred** — a teacher should see only the subjects they teach, which needs `TeacherAssignment` to carry a `sectionId` it does not have yet — so every teacher continues to resolve to the school's full entitlement set. **When that lands, narrow the TEACHER branch inside `resolve` and every content read narrows with it.**
+
+**Playback always reuses that entitlement chain.** `GET /videos/:id/playback-token` calls `VideosService.findPlayableVisibleTo` before minting an ES256 JWT scoped by `vid` and `pfx` to `videos/<id>/`. `PLAYBACK_DELIVERY_MODE=api` points absolute URLs at the existing Nest/MinIO routes for local development; `edge` points them at the Cloudflare Worker/R2 plane. Tokens live for at most ten minutes, and the web player re-mints through its BFF after an authorization failure.
+
+The playback signing private key lives **only in the API**. The edge receives public JWKs and can verify, never mint. `edge/playback-worker/` intentionally sits outside the `apps/*` and `packages/*` workspace globs so Wrangler does not enter the monorepo dependency graph; do not move it under `apps/`.
 
 The cross-tenant grant path is a *separate* service, `ContentEntitlementsAdminService`, reachable only via `EntitlementsAdminController` (`SUPER_ADMIN` + `@BypassTenantScope()`). Keep them apart: `ContentEntitlementsService`'s safety property is that no method accepts a school id, and merging the admin path would put one there.

@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma, Role, SubjectStatus, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
-import { InvitesService } from '../invites/invites.service';
+import { PasswordsService } from '../passwords/passwords.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.interface';
 import { TeachersService } from './teachers.service';
 
@@ -26,8 +26,8 @@ const baseUser = {
   firstName: 'Priya',
   lastName: 'Nair',
   role: Role.TEACHER,
-  status: UserStatus.PENDING,
-  activatedAt: null,
+  status: UserStatus.ACTIVE,
+  activatedAt: new Date(),
   createdAt: new Date('2026-07-01T00:00:00.000Z'),
   schoolId: 'school-1',
 };
@@ -37,36 +37,32 @@ describe('TeachersService', () => {
   let prisma: {
     school: { findUnique: jest.Mock };
     subject: { findMany: jest.Mock };
-    user: { create: jest.Mock };
+    user: { create: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
+    refreshToken: { updateMany: jest.Mock };
     teacherAssignment: { createMany: jest.Mock };
     $transaction: jest.Mock;
   };
-  let mail: { sendUserInvite: jest.Mock };
-  let invites: { mintToken: jest.Mock };
+  let mail: { sendCredentials: jest.Mock };
+  let passwords: { resolve: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
       school: { findUnique: jest.fn() },
       subject: { findMany: jest.fn() },
-      user: { create: jest.fn() },
+      user: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+      refreshToken: { updateMany: jest.fn() },
       teacherAssignment: { createMany: jest.fn() },
       $transaction: jest.fn((arg) => (typeof arg === 'function' ? arg(prisma) : Promise.all(arg))),
     };
-    mail = { sendUserInvite: jest.fn().mockResolvedValue(undefined) };
-    invites = {
-      mintToken: jest.fn().mockReturnValue({
-        token: 'raw-invite-token',
-        tokenHash: 'hashed-invite-token',
-        expiresAt: new Date('2026-08-01T00:00:00.000Z'),
-      }),
-    };
+    mail = { sendCredentials: jest.fn().mockResolvedValue(undefined) };
+    passwords = { resolve: jest.fn().mockResolvedValue({ password: 'Teal-Fox-7412', passwordHash: 'hash' }) };
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
         TeachersService,
         { provide: PrismaService, useValue: prisma },
         { provide: MailService, useValue: mail },
-        { provide: InvitesService, useValue: invites },
+        { provide: PasswordsService, useValue: passwords },
       ],
     }).compile();
 
@@ -76,7 +72,7 @@ describe('TeachersService', () => {
   describe('create', () => {
     const dto = { firstName: 'Priya', lastName: 'Nair', email: 'priya.nair@example.com' };
 
-    it('creates a PENDING teacher with no assignments when no subjects are given', async () => {
+    it('creates an ACTIVE teacher with no assignments when no subjects are given', async () => {
       prisma.school.findUnique.mockResolvedValue(school);
       prisma.subject.findMany.mockResolvedValue([]);
       prisma.user.create.mockResolvedValue(baseUser);
@@ -88,7 +84,7 @@ describe('TeachersService', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             role: Role.TEACHER,
-            status: UserStatus.PENDING,
+            status: UserStatus.ACTIVE,
             schoolId: 'school-1',
             name: 'Priya Nair',
           }),
@@ -117,17 +113,17 @@ describe('TeachersService', () => {
       ]);
     });
 
-    it('sends the invite only after the transaction commits', async () => {
+    it('sends credentials only after the transaction commits when requested', async () => {
       prisma.school.findUnique.mockResolvedValue(school);
       prisma.subject.findMany.mockResolvedValue([]);
       prisma.user.create.mockImplementation(async () => {
-        expect(mail.sendUserInvite).not.toHaveBeenCalled();
+        expect(mail.sendCredentials).not.toHaveBeenCalled();
         return baseUser;
       });
 
-      await service.create(dto, actor);
+      await service.create({ ...dto, sendCredentialsEmail: true }, actor);
 
-      expect(mail.sendUserInvite).toHaveBeenCalledWith(
+      expect(mail.sendCredentials).toHaveBeenCalledWith(
         expect.objectContaining({ email: dto.email, role: Role.TEACHER, schoolSlug: school.slug }),
       );
     });
@@ -168,7 +164,22 @@ describe('TeachersService', () => {
       );
 
       await expect(service.create(dto, actor)).rejects.toBeInstanceOf(ConflictException);
-      expect(mail.sendUserInvite).not.toHaveBeenCalled();
+      expect(mail.sendCredentials).not.toHaveBeenCalled();
     });
+  });
+
+  it('revokes live sessions when an admin resets a password', async () => {
+    prisma.user.findUnique.mockResolvedValue({ role: Role.TEACHER, email: baseUser.email });
+    await service.setPassword(baseUser.id, 'Coral-Otter-4821');
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: baseUser.id },
+      data: { passwordHash: 'hash', plainPassword: 'Teal-Fox-7412' },
+    });
+    expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: baseUser.id, revokedAt: null },
+        data: expect.objectContaining({ revokeReason: 'PASSWORD_RESET' }),
+      }),
+    );
   });
 });

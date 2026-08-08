@@ -2,10 +2,10 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import type {
   AdminVideo,
-  GradeLevel,
-  Subject,
+  Curriculum,
   VideoUploadTicket,
 } from '@smart-teacher/shared-types';
 import { VideoMetadataForm, type VideoMetadataSubmission } from './video-metadata-form';
@@ -18,14 +18,16 @@ type Step =
   | { name: 'done'; video: AdminVideo };
 
 interface VideoIngestPanelProps {
-  gradeLevels: GradeLevel[];
-  subjects: Subject[];
+  curricula: Curriculum[];
 }
 
-export function VideoIngestPanel({ gradeLevels, subjects }: VideoIngestPanelProps) {
+export function VideoIngestPanel({ curricula }: VideoIngestPanelProps) {
   const router = useRouter();
   const [step, setStep] = useState<Step>({ name: 'form' });
   const [error, setError] = useState<string | null>(null);
+  // Collapsed by default — the catalogue browser below is the primary view; this is an
+  // occasional action, not something that should push it off screen on every visit.
+  const [isOpen, setIsOpen] = useState(false);
 
   async function handleSubmit(submission: VideoMetadataSubmission) {
     setError(null);
@@ -37,8 +39,7 @@ export function VideoIngestPanel({ gradeLevels, subjects }: VideoIngestPanelProp
       body: JSON.stringify({
         title: submission.title,
         description: submission.description,
-        gradeLevelId: submission.gradeLevelId,
-        subjectId: submission.subjectId,
+        contentNodeId: submission.contentNodeId,
         contentType: submission.file.type,
         sizeBytes: submission.file.size,
       }),
@@ -91,48 +92,63 @@ export function VideoIngestPanel({ gradeLevels, subjects }: VideoIngestPanelProp
   }
 
   return (
-    <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-      <div>
-        <h2 className="text-base font-semibold">Add a video</h2>
-        <p className="text-sm text-gray-600">
-          The file uploads straight to storage, then queues for processing. Grade level and
-          subject are required — they decide which schools can be entitled to it.
-        </p>
-      </div>
-
-      {step.name === 'form' && (
-        <VideoMetadataForm
-          gradeLevels={gradeLevels}
-          subjects={subjects}
-          isSubmitting={false}
-          onSubmit={handleSubmit}
-        />
-      )}
-
-      {step.name === 'uploading' && (
-        <UploadProgressBar percent={step.percent} label={`Uploading “${step.title}”`} />
-      )}
-
-      {step.name === 'done' && (
-        <div className="space-y-3">
-          <p className="text-sm text-gray-700">
-            <span className="font-medium">{step.video.title}</span> uploaded and queued for
-            processing.
+    <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+      <button
+        type="button"
+        onClick={() => setIsOpen((open) => !open)}
+        aria-expanded={isOpen}
+        className="flex w-full items-center justify-between gap-4 p-6 text-left"
+      >
+        <div>
+          <h2 className="text-base font-semibold">Add a video</h2>
+          <p className="text-sm text-gray-600">
+            The file uploads straight to storage, then queues for processing. Where you file it
+            in the curriculum decides which schools can be entitled to it.
           </p>
-          <button
-            type="button"
-            onClick={() => {
-              setError(null);
-              setStep({ name: 'form' });
-            }}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100"
-          >
-            Add another
-          </button>
+        </div>
+        {isOpen ? (
+          <ChevronDown className="h-5 w-5 shrink-0 text-gray-400" aria-hidden="true" />
+        ) : (
+          <ChevronRight className="h-5 w-5 shrink-0 text-gray-400" aria-hidden="true" />
+        )}
+      </button>
+
+      {isOpen && (
+        <div className="space-y-4 border-t border-gray-200 p-6">
+          {step.name === 'form' && (
+            <VideoMetadataForm
+              curricula={curricula}
+              isSubmitting={false}
+              onSubmit={handleSubmit}
+            />
+          )}
+
+          {step.name === 'uploading' && (
+            <UploadProgressBar percent={step.percent} label={`Uploading “${step.title}”`} />
+          )}
+
+          {step.name === 'done' && (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-700">
+                <span className="font-medium">{step.video.title}</span> uploaded and queued for
+                processing.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setStep({ name: 'form' });
+                }}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100"
+              >
+                Add another
+              </button>
+            </div>
+          )}
+
+          {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
       )}
-
-      {error && <p className="text-sm text-red-600">{error}</p>}
     </div>
   );
 }

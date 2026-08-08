@@ -12,6 +12,7 @@ import { seedContentFixtures } from './utils/content-fixtures';
 const mailService = {
   sendUserInvite: jest.fn().mockResolvedValue(undefined),
   sendPasswordReset: jest.fn().mockResolvedValue(undefined),
+  sendCredentials: jest.fn().mockResolvedValue(undefined),
 };
 
 describe('Teacher onboarding (e2e)', () => {
@@ -79,20 +80,21 @@ describe('Teacher onboarding (e2e)', () => {
   });
 
   beforeEach(() => {
-    mailService.sendUserInvite.mockClear();
+    mailService.sendCredentials.mockClear();
   });
 
   describe('onboarding', () => {
-    it('creates a PENDING teacher with no assignments and sends the invite', async () => {
-      const response = await createTeacher(adminToken).expect(201);
+    it('creates an ACTIVE teacher with a password and optionally emails credentials', async () => {
+      const response = await createTeacher(adminToken, { sendCredentialsEmail: true }).expect(201);
 
       expect(response.body).toMatchObject({
-        status: UserStatus.PENDING,
+        status: UserStatus.ACTIVE,
         firstName: 'Test',
         lastName: 'Teacher',
         subjects: [],
       });
-      expect(mailService.sendUserInvite).toHaveBeenCalledWith(
+      expect(response.body.password).toEqual(expect.any(String));
+      expect(mailService.sendCredentials).toHaveBeenCalledWith(
         expect.objectContaining({ role: Role.TEACHER, schoolSlug: 'demo-school' }),
       );
     });
@@ -116,7 +118,7 @@ describe('Teacher onboarding (e2e)', () => {
 
     it('rejects an unknown subject id with a 404', async () => {
       await createTeacher(adminToken, { subjectIds: ['missing-subject'] }).expect(404);
-      expect(mailService.sendUserInvite).not.toHaveBeenCalled();
+      expect(mailService.sendCredentials).not.toHaveBeenCalled();
     });
 
     it('rejects a duplicate email with a 409', async () => {

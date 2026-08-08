@@ -15,16 +15,19 @@ export const IMPORT_TEMPLATE_HEADERS = [
   'grade_level',
   'section',
   'roll_number',
+  'password',
 ] as const;
 
 // `roll_number` may be blank — a school may not track roll numbers for every class.
-export const REQUIRED_HEADERS = ['first_name', 'last_name', 'email', 'grade_level', 'section'] as const;
+export const REQUIRED_HEADERS = ['first_name', 'last_name', 'email'] as const;
 
 // Matches CreateStudentDto's @MaxLength(60) on firstName/lastName.
 export const MAX_NAME_PART_LENGTH = 60;
 
 // Matches CreateStudentDto's @MaxLength(20) on rollNumber.
 export const MAX_ROLL_NUMBER_LENGTH = 20;
+export const MIN_PASSWORD_LENGTH = 8;
+export const MAX_PASSWORD_LENGTH = 72;
 
 // A DRAFT batch is a staging artefact for one admin's upload→confirm round trip. Pruned
 // opportunistically on the next upload rather than by a cron, matching LoginThrottleService.

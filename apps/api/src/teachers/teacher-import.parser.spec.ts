@@ -153,5 +153,18 @@ describe('parseTeacherCsv', () => {
 
       expect(result.rows[0].rowNumber).toBe(3);
     });
+
+    it('generates a password when the CSV cell is blank', () => {
+      const result = parseTeacherCsv(csv('email,name,subject_codes,password', 'asha@example.com,Asha Rao,maths,'));
+      expect(result.rows[0].password).toBe('');
+      expect(result.rowErrors).toEqual([]);
+    });
+
+    it('rejects a row whose password matches its email', () => {
+      const result = parseTeacherCsv(
+        csv('email,name,subject_codes,password', 'asha@example.com,Asha Rao,maths,ASHA@example.com'),
+      );
+      expect(result.rowErrors[0].errors).toContainEqual(expect.objectContaining({ code: 'PASSWORD_MATCHES_EMAIL' }));
+    });
   });
 });

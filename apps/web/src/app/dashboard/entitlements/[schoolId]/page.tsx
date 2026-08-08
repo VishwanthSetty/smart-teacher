@@ -6,13 +6,12 @@ import {
   apiGetSchool,
   apiListActiveSubjects,
   apiListAdminGradeLevels,
+  apiListCurricula,
   apiListSchoolEntitlements,
   ApiError,
 } from '@/lib/api-client';
 import { PageHeader } from '@/components/ui/page-header';
-import { EmptyState } from '@/components/ui/empty-state';
-import { GrantEntitlementForm } from './_components/grant-entitlement-form';
-import { EntitlementRowActions } from './_components/entitlement-row-actions';
+import { EntitlementMatrix } from './_components/entitlement-matrix';
 
 const ROUTE = '/dashboard/entitlements';
 
@@ -37,12 +36,21 @@ export default async function SchoolEntitlementsPage({
     notFound();
   }
 
-  const [entitlements, gradeLevels, subjects] = await Promise.all([
+  const [entitlements, gradeLevels, subjects, curricula] = await Promise.all([
     apiListSchoolEntitlements(accessToken, school.id),
     apiListAdminGradeLevels(accessToken),
     // Active subjects only: the API 409s on granting a retired one, so it must never be offered.
     apiListActiveSubjects(accessToken),
+    // The grid's cells are curricula. A high limit rather than pagination: the grid shows
+    // every grade x subject at once, and that product bounds the curriculum count.
+    apiListCurricula(accessToken, { limit: 200 }),
   ]);
+
+  // A grant on a since-retired subject stays live (retirement blocks new grants, not held
+  // ones) but the grid only offers active subjects, so it can never appear there. Count it
+  // here rather than let it silently vanish from the operator's view.
+  const activeSubjectIds = new Set(subjects.map((subject) => subject.id));
+  const retiredGrantCount = entitlements.filter((entitlement) => !activeSubjectIds.has(entitlement.subjectId)).length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -52,48 +60,22 @@ export default async function SchoolEntitlementsPage({
 
       <PageHeader
         title={school.name}
-        description="Grade level and subject content this school can reach."
+        description="Curricula this school can reach. A grant covers the whole tree beneath it."
       />
 
-      <GrantEntitlementForm schoolId={school.id} gradeLevels={gradeLevels} subjects={subjects} />
+      <EntitlementMatrix
+        schoolId={school.id}
+        gradeLevels={gradeLevels}
+        subjects={subjects}
+        curricula={curricula.data}
+        granted={entitlements}
+      />
 
-      {entitlements.length === 0 ? (
-        <EmptyState
-          icon={<span className="text-3xl">🔒</span>}
-          title="No content granted to this school yet"
-          description="Teachers and students here see an empty library until you grant a grade level and subject above."
-        />
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-gray-200 text-gray-500">
-              <tr>
-                <th className="px-4 py-3 font-medium">Grade level</th>
-                <th className="px-4 py-3 font-medium">Subject</th>
-                <th className="px-4 py-3 font-medium">Granted</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {entitlements.map((entitlement) => (
-                <tr key={entitlement.id} className="border-b border-gray-100 last:border-0">
-                  <td className="px-4 py-3 font-medium">{entitlement.gradeLevelName}</td>
-                  <td className="px-4 py-3">{entitlement.subjectName}</td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {new Date(entitlement.grantedAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <EntitlementRowActions
-                      schoolId={school.id}
-                      entitlementId={entitlement.id}
-                      label={`${entitlement.gradeLevelName} · ${entitlement.subjectName}`}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {retiredGrantCount > 0 && (
+        <p className="text-sm text-gray-500">
+          {retiredGrantCount} grant{retiredGrantCount === 1 ? '' : 's'} on retired subjects are preserved and not
+          shown above.
+        </p>
       )}
     </div>
   );

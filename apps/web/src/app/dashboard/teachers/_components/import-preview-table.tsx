@@ -64,7 +64,7 @@ export function ImportPreviewTable({
       {preview.validCount > 0 && (
         <details className="rounded-lg border border-gray-200">
           <summary className="cursor-pointer px-4 py-2 text-sm font-medium">
-            {preview.validCount} teacher{preview.validCount === 1 ? '' : 's'} will be invited
+            {preview.validCount} teacher{preview.validCount === 1 ? '' : 's'} will be created
           </summary>
           <div className="overflow-x-auto border-t border-gray-200">
             <table className="w-full text-left text-sm">
@@ -73,6 +73,7 @@ export function ImportPreviewTable({
                   <th className="px-4 py-2 font-medium">Row</th>
                   <th className="px-4 py-2 font-medium">Name</th>
                   <th className="px-4 py-2 font-medium">Email</th>
+                  <th className="px-4 py-2 font-medium">Password</th>
                   <th className="px-4 py-2 font-medium">Subjects</th>
                 </tr>
               </thead>
@@ -82,6 +83,7 @@ export function ImportPreviewTable({
                     <td className="px-4 py-2 text-gray-600">{row.rowNumber}</td>
                     <td className="px-4 py-2">{row.name}</td>
                     <td className="px-4 py-2 text-gray-600">{row.email}</td>
+                    <td className="px-4 py-2 text-gray-600">{row.hasPassword ? 'Provided' : 'Auto-generated'}</td>
                     <td className="px-4 py-2 text-gray-600">
                       {row.subjectCodes.join(', ') || <span className="text-gray-400">—</span>}
                     </td>

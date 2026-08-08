@@ -5,8 +5,9 @@ import { ActorContentScopeService } from '../entitlements/actor-content-scope.se
 import { requireReadable, type ActorScope } from '../common/authorization/resource-access';
 import { VideosAccessPolicy } from './videos-access.policy';
 
-const VIDEO = { gradeLevelId: 'g5', subjectId: 'maths' };
+const VIDEO = { curriculumId: 'c-g5-maths' };
 const TEACHER: ActorScope = { userId: 'u1', role: Role.TEACHER, schoolId: 'school-a' };
+const SCHOOL_ADMIN: ActorScope = { userId: 'u2', role: Role.SCHOOL_ADMIN, schoolId: 'school-a' };
 const SUPER_ADMIN: ActorScope = { userId: 'u0', role: Role.SUPER_ADMIN, schoolId: null };
 
 describe('VideosAccessPolicy', () => {
@@ -30,13 +31,20 @@ describe('VideosAccessPolicy', () => {
     contentScope.includes.mockResolvedValue(true);
 
     await expect(policy.canRead(TEACHER, VIDEO)).resolves.toBe(true);
-    expect(contentScope.includes).toHaveBeenCalledWith(TEACHER, 'g5', 'maths');
+    expect(contentScope.includes).toHaveBeenCalledWith(TEACHER, 'c-g5-maths');
   });
 
   it('denies a video outside it', async () => {
     contentScope.includes.mockResolvedValue(false);
 
     await expect(policy.canRead(TEACHER, VIDEO)).resolves.toBe(false);
+  });
+
+  it("checks a SCHOOL_ADMIN against the school's content scope", async () => {
+    contentScope.includes.mockResolvedValue(true);
+
+    await expect(policy.canRead(SCHOOL_ADMIN, VIDEO)).resolves.toBe(true);
+    expect(contentScope.includes).toHaveBeenCalledWith(SCHOOL_ADMIN, 'c-g5-maths');
   });
 
   it('allows SUPER_ADMIN, who holds no entitlements to check against', async () => {

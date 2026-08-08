@@ -17,6 +17,7 @@ const MISSING_BATCH_ID = 'missing-00000000000000000000000';
 const mailService = {
   sendUserInvite: jest.fn().mockResolvedValue(undefined),
   sendPasswordReset: jest.fn().mockResolvedValue(undefined),
+  sendCredentials: jest.fn().mockResolvedValue(undefined),
 };
 
 describe('Teacher bulk import (e2e)', () => {
@@ -59,7 +60,7 @@ describe('Teacher bulk import (e2e)', () => {
   });
 
   beforeEach(() => {
-    mailService.sendUserInvite.mockClear();
+    mailService.sendCredentials.mockClear();
   });
 
   function upload(token: string, fixture: string) {
@@ -111,7 +112,7 @@ describe('Teacher bulk import (e2e)', () => {
       expect(codes.get(6)).toEqual(['UNKNOWN_SUBJECT']);
 
       expect(await countUsers(adminToken)).toBe(before);
-      expect(mailService.sendUserInvite).not.toHaveBeenCalled();
+      expect(mailService.sendCredentials).not.toHaveBeenCalled();
     });
 
     it('rejects a file missing a required column, naming it', async () => {
@@ -162,23 +163,24 @@ describe('Teacher bulk import (e2e)', () => {
   });
 
   describe('confirm', () => {
-    it('imports the valid rows, skips the bad ones, and invites only the created teachers', async () => {
+    it('imports the valid rows, skips the bad ones, and emails only the created teachers', async () => {
       const before = await countUsers(adminToken);
       const preview = await upload(adminToken, 'mixed.csv').expect(201);
 
       const result = await request(app.getHttpServer())
         .post(`/teachers/bulk/${preview.body.batchId}/confirm`)
         .set('Authorization', `Bearer ${adminToken}`)
+        .send({ sendCredentialsEmail: true })
         .expect(200);
 
       expect(result.body.createdCount).toBe(2);
       expect(result.body.skippedCount).toBe(3);
-      expect(result.body.invitesSent).toBe(2);
-      expect(result.body.invitesFailed).toBe(0);
+      expect(result.body.emailsSent).toBe(2);
+      expect(result.body.emailsFailed).toBe(0);
       expect(await countUsers(adminToken)).toBe(before + 2);
 
-      expect(mailService.sendUserInvite).toHaveBeenCalledTimes(2);
-      expect(mailService.sendUserInvite).toHaveBeenCalledWith(
+      expect(mailService.sendCredentials).toHaveBeenCalledTimes(2);
+      expect(mailService.sendCredentials).toHaveBeenCalledWith(
         expect.objectContaining({ email: 'newteacher@example.com', role: Role.TEACHER }),
       );
 
@@ -189,7 +191,7 @@ describe('Teacher bulk import (e2e)', () => {
       const created = users.body.find(
         (user: { email: string }) => user.email === 'newteacher@example.com',
       );
-      expect(created).toMatchObject({ role: Role.TEACHER, status: 'PENDING' });
+      expect(created).toMatchObject({ role: Role.TEACHER, status: 'ACTIVE' });
     });
 
     it('imports a BOM-prefixed, reordered-column file exported from Excel', async () => {
@@ -237,7 +239,7 @@ describe('Teacher bulk import (e2e)', () => {
         .expect(200);
 
       expect(response.headers['content-type']).toContain('text/csv');
-      expect(response.text).toContain('row_number,email,name,subject_codes,errors');
+      expect(response.text).toContain('row_number,email,name,subject_codes,password,errors');
       expect(response.text).toContain('Duplicate of row 3 in this file.');
       expect(response.text).toContain('already exists in this school');
       expect(response.text).toContain('canonical subject list');

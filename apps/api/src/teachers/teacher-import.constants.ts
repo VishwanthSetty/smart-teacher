@@ -8,12 +8,14 @@ export const MAX_IMPORT_ROWS = 2000;
 
 // The exact headers the downloadable template carries, in order. The parser matches
 // against these after normalisation, so a reordered or differently-cased file still works.
-export const IMPORT_TEMPLATE_HEADERS = ['email', 'name', 'subject_codes'] as const;
+export const IMPORT_TEMPLATE_HEADERS = ['email', 'name', 'subject_codes', 'password'] as const;
 
 // `subject_codes` may be blank — a teacher can be imported before their subjects are known.
 export const REQUIRED_HEADERS = ['email', 'name'] as const;
 
 export const MAX_NAME_LENGTH = 120;
+export const MIN_PASSWORD_LENGTH = 8;
+export const MAX_PASSWORD_LENGTH = 72;
 
 // A DRAFT batch is a staging artefact for one admin's upload→confirm round trip. Pruned
 // opportunistically on the next upload rather than by a cron, matching LoginThrottleService.

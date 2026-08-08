@@ -15,15 +15,12 @@ export class UpdateVideoDto {
   @MaxLength(2000)
   description?: string;
 
+  // Re-filing a video moves it anywhere in the tree, including into another curriculum —
+  // which changes which schools can see it, so the service re-validates the destination.
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
-  gradeLevelId?: string;
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  subjectId?: string;
+  contentNodeId?: string;
 
   @ApiProperty({ required: false, nullable: true })
   @ValidateIf((_object, value) => value !== undefined && value !== null)

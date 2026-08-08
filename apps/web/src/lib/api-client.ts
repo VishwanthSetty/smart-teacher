@@ -23,9 +23,24 @@ import type {
   AdminVideoDetail,
   ContentImpact,
   ListAdminVideosQuery,
-  PlaybackTicket,
+  PlaybackToken,
   UpdateVideoInput,
+  Video,
   VideoUploadTicket,
+  CloneCurriculumSchemaInput,
+  ContentNode,
+  ContentTree,
+  CreateContentNodeInput,
+  CreateCurriculumInput,
+  CreateCurriculumSchemaInput,
+  Curriculum,
+  CurriculumDetail,
+  CurriculumSchema,
+  ListCurriculaQuery,
+  MoveContentNodeInput,
+  UpdateContentNodeInput,
+  UpdateCurriculumInput,
+  UpdateCurriculumSchemaInput,
 } from '@smart-teacher/shared-types';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:4000';
@@ -182,6 +197,8 @@ export interface CreateSchoolInput {
   plan?: Plan;
   adminEmail: string;
   adminName: string;
+  adminPassword?: string;
+  sendInvite?: boolean;
 }
 
 export interface UpdateSchoolInput {
@@ -337,10 +354,12 @@ export async function apiUploadTeacherImport(
 export async function apiConfirmTeacherImport(
   accessToken: string,
   batchId: string,
+  input: { sendCredentialsEmail?: boolean } = {},
 ): Promise<TeacherImportResult> {
   const response = await fetch(`${API_URL}/teachers/bulk/${batchId}/confirm`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
     cache: 'no-store',
   });
   return handleResponse<TeacherImportResult>(response);
@@ -519,8 +538,10 @@ export async function apiUpdateVideo(
 export interface CreateVideoInput {
   title: string;
   description?: string;
-  gradeLevelId: string;
-  subjectId: string;
+  // Where the video sits in the curriculum tree. The grade level and subject are implied
+  // by the node's curriculum, so neither is sent — passing them would be a second,
+  // contradictable source of truth for the entitlement key.
+  contentNodeId: string;
   contentType: string;
   sizeBytes: number;
 }
@@ -611,10 +632,9 @@ export async function apiDeleteVideo(accessToken: string, id: string): Promise<v
 // SUPER_ADMIN-only cross-tenant counts used before retiring or reassigning content.
 export async function apiGetContentImpact(
   accessToken: string,
-  gradeLevelId: string,
-  subjectId: string,
+  curriculumId: string,
 ): Promise<ContentImpact> {
-  const params = new URLSearchParams({ gradeLevelId, subjectId });
+  const params = new URLSearchParams({ curriculumId });
   const response = await fetch(`${API_URL}/admin/content-impact?${params}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: 'no-store',
@@ -622,17 +642,36 @@ export async function apiGetContentImpact(
   return handleResponse<ContentImpact>(response);
 }
 
-// SUPER_ADMIN, TEACHER, or STUDENT; the API re-checks entitlement at every mint.
-export async function apiCreatePlayback(
-  accessToken: string,
-  id: string,
-): Promise<PlaybackTicket> {
-  const response = await fetch(`${API_URL}/videos/${id}/playback`, {
-    method: 'POST',
+// SCHOOL_ADMIN, TEACHER and STUDENT (SUPER_ADMIN uses /admin/videos). The API
+// returns just the READY videos the school's entitlements allow, narrowed further for a
+// student to their enrolled grade level. A bare array — this endpoint is not paginated.
+export async function apiListVideos(accessToken: string): Promise<Video[]> {
+  const response = await fetch(`${API_URL}/videos`, {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: 'no-store',
   });
-  return handleResponse<PlaybackTicket>(response);
+  return handleResponse<Video[]>(response);
+}
+
+// 404 covers both "no such video" and "not entitled" — the API never distinguishes them.
+export async function apiGetVideo(accessToken: string, id: string): Promise<Video> {
+  const response = await fetch(`${API_URL}/videos/${id}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  return handleResponse<Video>(response);
+}
+
+// All roles may mint; tenant roles are re-checked against their content scope every time.
+export async function apiGetPlaybackToken(
+  accessToken: string,
+  id: string,
+): Promise<PlaybackToken> {
+  const response = await fetch(`${API_URL}/videos/${id}/playback-token`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  return handleResponse<PlaybackToken>(response);
 }
 
 // @AnyRole() and active-only, unlike apiListSubjects above (SUPER_ADMIN, includes
@@ -718,8 +757,8 @@ export async function apiListSchoolEntitlements(
 }
 
 export interface GrantEntitlementInput {
-  gradeLevelId: string;
-  subjectId: string;
+  // One curriculum is the whole (gradeLevel, subject) tree, and the licensing unit.
+  curriculumId: string;
 }
 
 export async function apiGrantSchoolEntitlement(
@@ -737,6 +776,25 @@ export async function apiGrantSchoolEntitlement(
     cache: 'no-store',
   });
   return handleResponse<Entitlement>(response);
+}
+
+// Batch save for the checkbox-matrix admin UI: replaces the school's entire entitlement
+// set in one call instead of one grant/revoke round-trip per curriculum.
+export async function apiReplaceSchoolEntitlements(
+  accessToken: string,
+  schoolId: string,
+  curriculumIds: string[],
+): Promise<Entitlement[]> {
+  const response = await fetch(`${API_URL}/admin/schools/${schoolId}/entitlements`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ curriculumIds }),
+    cache: 'no-store',
+  });
+  return handleResponse<Entitlement[]>(response);
 }
 
 // 204 No Content on success, so this can't go through handleResponse — response.json()
@@ -789,7 +847,9 @@ export interface CreateStudentInput {
   lastName: string;
   email: string;
   rollNumber?: string;
-  sectionId: string;
+  sectionId?: string;
+  password?: string;
+  sendCredentialsEmail?: boolean;
 }
 
 export interface CreateTeacherInput {
@@ -797,6 +857,8 @@ export interface CreateTeacherInput {
   lastName: string;
   email: string;
   subjectIds?: string[];
+  password?: string;
+  sendCredentialsEmail?: boolean;
 }
 
 export async function apiCreateTeacher(accessToken: string, input: CreateTeacherInput): Promise<Teacher> {
@@ -850,6 +912,50 @@ export async function apiUpdateStudent(
   return handleResponse<Student>(response);
 }
 
+export async function apiGetTeacherPassword(accessToken: string, id: string): Promise<{ password: string | null }> {
+  const response = await fetch(`${API_URL}/teachers/${id}/password`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  return handleResponse<{ password: string | null }>(response);
+}
+
+export async function apiSetTeacherPassword(
+  accessToken: string,
+  id: string,
+  password?: string,
+): Promise<{ password: string }> {
+  const response = await fetch(`${API_URL}/teachers/${id}/password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ password }),
+    cache: 'no-store',
+  });
+  return handleResponse<{ password: string }>(response);
+}
+
+export async function apiGetStudentPassword(accessToken: string, id: string): Promise<{ password: string | null }> {
+  const response = await fetch(`${API_URL}/students/${id}/password`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  return handleResponse<{ password: string | null }>(response);
+}
+
+export async function apiSetStudentPassword(
+  accessToken: string,
+  id: string,
+  password?: string,
+): Promise<{ password: string }> {
+  const response = await fetch(`${API_URL}/students/${id}/password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ password }),
+    cache: 'no-store',
+  });
+  return handleResponse<{ password: string }>(response);
+}
+
 // No Content-Type header on purpose: undici derives the multipart boundary from the
 // FormData itself, and setting the header by hand strips it and breaks the upload.
 export async function apiUploadStudentImport(
@@ -868,10 +974,12 @@ export async function apiUploadStudentImport(
 export async function apiConfirmStudentImport(
   accessToken: string,
   batchId: string,
+  input: { sendCredentialsEmail?: boolean } = {},
 ): Promise<StudentImportResult> {
   const response = await fetch(`${API_URL}/students/bulk/${batchId}/confirm`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
     cache: 'no-store',
   });
   return handleResponse<StudentImportResult>(response);
@@ -894,4 +1002,266 @@ export async function apiGetStudentImportErrors(
     cache: 'no-store',
   });
   return handleCsvResponse(response);
+}
+
+// ---------------------------------------------------------------------------
+// Curriculum structure — the configurable hierarchy below the grade/subject spine.
+//
+// Authoring (/admin/*) is SUPER_ADMIN only. The two school-facing reads at the bottom are
+// SCHOOL_ADMIN/TEACHER/STUDENT only, matching /videos exactly.
+// ---------------------------------------------------------------------------
+
+export async function apiListCurriculumSchemas(accessToken: string): Promise<CurriculumSchema[]> {
+  const response = await fetch(`${API_URL}/admin/curriculum-schemas`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  return handleResponse<CurriculumSchema[]>(response);
+}
+
+export async function apiGetCurriculumSchema(
+  accessToken: string,
+  id: string,
+): Promise<CurriculumSchema> {
+  const response = await fetch(`${API_URL}/admin/curriculum-schemas/${id}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  return handleResponse<CurriculumSchema>(response);
+}
+
+export async function apiCreateCurriculumSchema(
+  accessToken: string,
+  input: CreateCurriculumSchemaInput,
+): Promise<CurriculumSchema> {
+  const response = await fetch(`${API_URL}/admin/curriculum-schemas`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
+    cache: 'no-store',
+  });
+  return handleResponse<CurriculumSchema>(response);
+}
+
+export async function apiCloneCurriculumSchema(
+  accessToken: string,
+  id: string,
+  input: CloneCurriculumSchemaInput,
+): Promise<CurriculumSchema> {
+  const response = await fetch(`${API_URL}/admin/curriculum-schemas/${id}/clone`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
+    cache: 'no-store',
+  });
+  return handleResponse<CurriculumSchema>(response);
+}
+
+export async function apiUpdateCurriculumSchema(
+  accessToken: string,
+  id: string,
+  input: UpdateCurriculumSchemaInput,
+): Promise<CurriculumSchema> {
+  const response = await fetch(`${API_URL}/admin/curriculum-schemas/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
+    cache: 'no-store',
+  });
+  return handleResponse<CurriculumSchema>(response);
+}
+
+// 204 No Content on success, so this can't go through handleResponse — response.json()
+// would throw on an empty body.
+export async function apiDeleteCurriculumSchema(accessToken: string, id: string): Promise<void> {
+  const response = await fetch(`${API_URL}/admin/curriculum-schemas/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ message: response.statusText }));
+    throw new ApiError(response.status, body.message ?? 'Request failed');
+  }
+}
+
+export async function apiListCurricula(
+  accessToken: string,
+  query: ListCurriculaQuery = {},
+): Promise<PaginatedResponse<Curriculum>> {
+  const params = new URLSearchParams();
+  if (query.page) params.set('page', String(query.page));
+  if (query.limit) params.set('limit', String(query.limit));
+  if (query.gradeLevelId) params.set('gradeLevelId', query.gradeLevelId);
+  if (query.subjectId) params.set('subjectId', query.subjectId);
+  if (query.status) params.set('status', query.status);
+
+  const response = await fetch(`${API_URL}/admin/curricula?${params}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  return handleResponse<PaginatedResponse<Curriculum>>(response);
+}
+
+export async function apiGetCurriculum(accessToken: string, id: string): Promise<CurriculumDetail> {
+  const response = await fetch(`${API_URL}/admin/curricula/${id}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  return handleResponse<CurriculumDetail>(response);
+}
+
+// The builder view: every node and every video, whatever the publication state.
+export async function apiGetAdminCurriculumTree(
+  accessToken: string,
+  id: string,
+): Promise<ContentTree> {
+  const response = await fetch(`${API_URL}/admin/curricula/${id}/tree`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  return handleResponse<ContentTree>(response);
+}
+
+export async function apiCreateCurriculum(
+  accessToken: string,
+  input: CreateCurriculumInput,
+): Promise<CurriculumDetail> {
+  const response = await fetch(`${API_URL}/admin/curricula`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
+    cache: 'no-store',
+  });
+  return handleResponse<CurriculumDetail>(response);
+}
+
+export async function apiUpdateCurriculum(
+  accessToken: string,
+  id: string,
+  input: UpdateCurriculumInput,
+): Promise<CurriculumDetail> {
+  const response = await fetch(`${API_URL}/admin/curricula/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
+    cache: 'no-store',
+  });
+  return handleResponse<CurriculumDetail>(response);
+}
+
+// Publishing and unpublishing take effect immediately for every entitled school, which is
+// why they are their own endpoints rather than a status on the PATCH body.
+export async function apiPublishCurriculum(
+  accessToken: string,
+  id: string,
+): Promise<CurriculumDetail> {
+  const response = await fetch(`${API_URL}/admin/curricula/${id}/publish`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  return handleResponse<CurriculumDetail>(response);
+}
+
+export async function apiUnpublishCurriculum(
+  accessToken: string,
+  id: string,
+): Promise<CurriculumDetail> {
+  const response = await fetch(`${API_URL}/admin/curricula/${id}/unpublish`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  return handleResponse<CurriculumDetail>(response);
+}
+
+export async function apiDeleteCurriculum(accessToken: string, id: string): Promise<void> {
+  const response = await fetch(`${API_URL}/admin/curricula/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ message: response.statusText }));
+    throw new ApiError(response.status, body.message ?? 'Request failed');
+  }
+}
+
+// Nested under the curriculum because a node cannot exist without one, and the curriculum
+// supplies the schema the new node's depth is checked against.
+export async function apiCreateContentNode(
+  accessToken: string,
+  curriculumId: string,
+  input: CreateContentNodeInput,
+): Promise<ContentNode> {
+  const response = await fetch(`${API_URL}/admin/curricula/${curriculumId}/nodes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
+    cache: 'no-store',
+  });
+  return handleResponse<ContentNode>(response);
+}
+
+export async function apiUpdateContentNode(
+  accessToken: string,
+  id: string,
+  input: UpdateContentNodeInput,
+): Promise<ContentNode> {
+  const response = await fetch(`${API_URL}/admin/content-nodes/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
+    cache: 'no-store',
+  });
+  return handleResponse<ContentNode>(response);
+}
+
+// Reparent and reorder in one call — the same gesture in the builder, so splitting them
+// would let the UI leave the tree half-moved between two requests.
+export async function apiMoveContentNode(
+  accessToken: string,
+  id: string,
+  input: MoveContentNodeInput,
+): Promise<ContentNode> {
+  const response = await fetch(`${API_URL}/admin/content-nodes/${id}/move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
+    cache: 'no-store',
+  });
+  return handleResponse<ContentNode>(response);
+}
+
+export async function apiDeleteContentNode(accessToken: string, id: string): Promise<void> {
+  const response = await fetch(`${API_URL}/admin/content-nodes/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ message: response.statusText }));
+    throw new ApiError(response.status, body.message ?? 'Request failed');
+  }
+}
+
+// SCHOOL_ADMIN, TEACHER and STUDENT. The API returns just the published curricula the school is
+// entitled to, narrowed further for a student to their enrolled grade level.
+export async function apiListMyCurricula(accessToken: string): Promise<Curriculum[]> {
+  const response = await fetch(`${API_URL}/curricula`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  return handleResponse<Curriculum[]>(response);
+}
+
+// 404 covers "no such curriculum", "not entitled" and "not published" alike — the API
+// never distinguishes them.
+export async function apiGetCurriculumTree(accessToken: string, id: string): Promise<ContentTree> {
+  const response = await fetch(`${API_URL}/curricula/${id}/tree`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  return handleResponse<ContentTree>(response);
 }

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import {
   BookOpen,
   Building2,
@@ -9,6 +10,7 @@ import {
 } from 'lucide-react';
 import { Role } from '@smart-teacher/shared-types';
 import { apiGetDashboardStats, apiListSchools } from '@/lib/api-client';
+import { STUDENT_HOME } from '@/lib/nav';
 import { getAccessToken, requireUser } from '@/lib/session';
 import { PageHeader } from '@/components/ui/page-header';
 import { StatTile } from '@/components/ui/stat-tile';
@@ -17,6 +19,14 @@ const TILE_GRID = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3';
 
 export default async function DashboardPage() {
   const user = await requireUser();
+
+  // A student has no stat tiles to see. Redirecting here rather than at login covers every
+  // entry point at once — the post-login DEFAULT_REDIRECT, the `/` root redirect, and the
+  // redirect('/dashboard') fallback other pages use when a role gate fails.
+  if (user.role === Role.STUDENT) {
+    redirect(STUDENT_HOME);
+  }
+
   // The layout's requireUser() already ran, so the cookie is present and getCurrentUser
   // is cached — this is just reading the same request's token back for the API calls.
   const accessToken = getAccessToken() ?? '';
@@ -108,7 +118,7 @@ export default async function DashboardPage() {
       <PageHeader title={`Welcome back, ${user.name}`} description={user.school?.name ?? undefined} />
       <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
         <p className="text-sm text-gray-600">
-          Your timetable and videos will appear here as they are published.
+          Your classes and lessons will appear here as they are published.
         </p>
       </div>
     </>

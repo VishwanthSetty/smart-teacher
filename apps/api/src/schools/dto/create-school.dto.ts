@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Plan } from '@prisma/client';
-import { IsEmail, IsEnum, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, Matches, MinLength } from 'class-validator';
 
 // Lowercase, URL-safe slug: alphanumeric segments separated by single hyphens.
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -35,4 +35,25 @@ export class CreateSchoolDto {
   @IsString()
   @MinLength(1)
   adminName!: string;
+
+  @ApiProperty({
+    example: 'Passw0rd!',
+    minLength: 8,
+    required: false,
+    description:
+      'Initial password for the school admin. When set, the admin account is created ACTIVE instead of PENDING.',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  adminPassword?: string;
+
+  @ApiProperty({
+    required: false,
+    default: true,
+    description: 'Whether to email the admin. Defaults to true. Must be true if no adminPassword is given.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  sendInvite?: boolean;
 }

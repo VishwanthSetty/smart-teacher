@@ -8,7 +8,7 @@ import type { TeacherImportRowError } from './teacher-import.parser';
 const ERROR_REPORT_HEADERS = ['row_number', ...IMPORT_TEMPLATE_HEADERS, 'errors'] as const;
 
 export function buildTemplateCsv(): string {
-  const csv = stringify([['teacher@example.com', 'Asha Rao', 'maths,science']], {
+  const csv = stringify([['teacher@example.com', 'Asha Rao', 'maths,science', '']], {
     header: true,
     columns: [...IMPORT_TEMPLATE_HEADERS],
   });
@@ -22,6 +22,9 @@ export function buildErrorReportCsv(rowErrors: TeacherImportRowError[]): string 
       row.email,
       row.name,
       row.subjectCodes,
+      // Never put credentials in a downloaded report. The admin refills this cell or
+      // leaves it blank to generate a new password.
+      '',
       row.errors.map((issue) => issue.message).join('; '),
     ]),
     { header: true, columns: [...ERROR_REPORT_HEADERS] },

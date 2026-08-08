@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { createPrivateKey, createPublicKey, KeyObject } from 'node:crypto';
+import { createPrivateKey, createPublicKey, JsonWebKey, KeyObject } from 'node:crypto';
 
 interface PlaybackClaims {
   sub: string;
@@ -20,6 +20,7 @@ const AUDIENCE = 'smart-teacher-playback';
 export class PlaybackTokenService {
   private readonly privateKey: KeyObject;
   private readonly publicKey: KeyObject;
+  private readonly publicPem: Buffer;
   private readonly keyId: string;
 
   constructor(
@@ -33,6 +34,7 @@ export class PlaybackTokenService {
       ).toString('utf8');
       this.privateKey = createPrivateKey(pem);
       this.publicKey = createPublicKey(this.privateKey);
+      this.publicPem = Buffer.from(this.publicKey.export({ format: 'pem', type: 'spki' }));
       this.keyId = this.configService.getOrThrow<string>('PLAYBACK_SIGNING_KEY_ID');
     } catch {
       throw new Error('PLAYBACK_SIGNING_PRIVATE_KEY_B64 must contain a valid PKCS#8 private key');
@@ -59,7 +61,7 @@ export class PlaybackTokenService {
   async verify(token: string, videoId: string): Promise<void> {
     try {
       const claims = await this.jwtService.verifyAsync<PlaybackClaims>(token, {
-        publicKey: this.publicKey,
+        publicKey: this.publicPem,
         algorithms: ['ES256'],
         issuer: ISSUER,
         audience: AUDIENCE,

@@ -27,6 +27,10 @@ function toEntity(section: SectionWithCount): SectionEntity {
 export class SectionsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  countAll(): Promise<number> {
+    return this.prisma.section.count();
+  }
+
   async findAll(): Promise<SectionEntity[]> {
     const sections = await this.prisma.section.findMany({
       include: SECTION_INCLUDE,

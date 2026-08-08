@@ -22,6 +22,15 @@ function loginRedirectUrl(request: NextRequest): URL {
   return url;
 }
 
+// An XHR from the player cannot follow a 302 to /login — it would parse the HTML login page as
+// JSON. API routes get the same { message } 401 shape every BFF handler already returns.
+function unauthenticated(request: NextRequest): NextResponse {
+  if (request.nextUrl.pathname.startsWith('/api/')) {
+    return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });
+  }
+  return NextResponse.redirect(loginRedirectUrl(request));
+}
+
 // Stamped on every pass-through so requireUser() can still build a `?next=` redirect if
 // the API later rejects the token (revoked session, disabled account) — that check
 // happens in a server component, past the point where a redirect can read the URL.
@@ -34,7 +43,7 @@ function withPathnameHeader(request: NextRequest): Headers {
 export async function middleware(request: NextRequest) {
   const refreshToken = request.cookies.get(REFRESH_TOKEN_COOKIE)?.value;
   if (!refreshToken) {
-    return NextResponse.redirect(loginRedirectUrl(request));
+    return unauthenticated(request);
   }
 
   const accessToken = request.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
@@ -50,7 +59,7 @@ export async function middleware(request: NextRequest) {
   });
 
   if (!refreshed.ok) {
-    const response = NextResponse.redirect(loginRedirectUrl(request));
+    const response = unauthenticated(request);
     response.cookies.delete(ACCESS_TOKEN_COOKIE);
     response.cookies.delete(REFRESH_TOKEN_COOKIE);
     return response;
@@ -70,5 +79,8 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*'],
+  // The player re-mints a playback token mid-video from /api/videos/:id/playback-token. Without
+  // this second entry that call reads a stale access-token cookie once the ~15m access token
+  // expires, the API 401s, and a long video dies with no way back short of a page reload.
+  matcher: ['/dashboard/:path*', '/api/videos/:path*'],
 };

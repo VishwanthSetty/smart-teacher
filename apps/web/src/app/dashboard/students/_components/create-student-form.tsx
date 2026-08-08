@@ -9,6 +9,9 @@ export function CreateStudentForm({ sections }: { sections: Section[] }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [sendCredentialsEmail, setSendCredentialsEmail] = useState(false);
+  const [createdPassword, setCreatedPassword] = useState<string | null>(null);
   const [rollNumber, setRollNumber] = useState('');
   const [sectionId, setSectionId] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -17,6 +20,7 @@ export function CreateStudentForm({ sections }: { sections: Section[] }) {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    setCreatedPassword(null);
     setIsSubmitting(true);
 
     const response = await fetch('/api/students', {
@@ -26,8 +30,10 @@ export function CreateStudentForm({ sections }: { sections: Section[] }) {
         firstName,
         lastName,
         email,
+        password: password || undefined,
+        sendCredentialsEmail,
         rollNumber: rollNumber || undefined,
-        sectionId,
+        sectionId: sectionId || undefined,
       }),
     });
 
@@ -39,9 +45,13 @@ export function CreateStudentForm({ sections }: { sections: Section[] }) {
       return;
     }
 
+    const student = await response.json();
+    setCreatedPassword(student.password);
     setFirstName('');
     setLastName('');
     setEmail('');
+    setPassword('');
+    setSendCredentialsEmail(false);
     setRollNumber('');
     setSectionId('');
     router.refresh();
@@ -97,6 +107,31 @@ export function CreateStudentForm({ sections }: { sections: Section[] }) {
           />
         </div>
 
+        <div className="space-y-1 sm:col-span-2">
+          <label htmlFor="studentPassword" className="block text-sm font-medium text-gray-700">
+            Password (leave blank to generate one)
+          </label>
+          <input
+            id="studentPassword"
+            type="text"
+            minLength={8}
+            maxLength={72}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
+          />
+        </div>
+
+        <label className="flex items-center gap-2 text-sm text-gray-700 sm:col-span-2">
+          <input
+            type="checkbox"
+            checked={sendCredentialsEmail}
+            onChange={(e) => setSendCredentialsEmail(e.target.checked)}
+            className="rounded border-gray-300"
+          />
+          Email credentials
+        </label>
+
         <div className="space-y-1">
           <label htmlFor="rollNumber" className="block text-sm font-medium text-gray-700">
             Roll number (optional)
@@ -106,23 +141,26 @@ export function CreateStudentForm({ sections }: { sections: Section[] }) {
             type="text"
             value={rollNumber}
             onChange={(e) => setRollNumber(e.target.value)}
+            disabled={!sectionId}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
           />
         </div>
 
         <div className="space-y-1">
           <label htmlFor="sectionId" className="block text-sm font-medium text-gray-700">
-            Class / Section
+            Class / Section (optional)
           </label>
           <select
             id="sectionId"
-            required
             value={sectionId}
-            onChange={(e) => setSectionId(e.target.value)}
+            onChange={(e) => {
+              setSectionId(e.target.value);
+              if (!e.target.value) setRollNumber('');
+            }}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
           >
-            <option value="" disabled>
-              Select a section
+            <option value="">
+              No section
             </option>
             {sections.map((section) => (
               <option key={section.id} value={section.id}>
@@ -134,17 +172,22 @@ export function CreateStudentForm({ sections }: { sections: Section[] }) {
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {createdPassword && (
+        <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-900">
+          <p>Student created. Password: <strong>{createdPassword}</strong></p>
+          <button type="button" onClick={() => void navigator.clipboard.writeText(createdPassword)} className="mt-2 underline">
+            Copy password
+          </button>
+        </div>
+      )}
 
       <button
         type="submit"
-        disabled={isSubmitting || sections.length === 0}
+        disabled={isSubmitting}
         className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
       >
         {isSubmitting ? 'Onboarding…' : 'Onboard student'}
       </button>
-      {sections.length === 0 && (
-        <p className="text-sm text-gray-500">Create a section before onboarding a student.</p>
-      )}
     </form>
   );
 }

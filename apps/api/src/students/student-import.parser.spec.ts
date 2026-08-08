@@ -82,17 +82,14 @@ describe('parseStudentCsv', () => {
       expect(result.rows[0].rollNumber).toBeNull();
     });
 
-    it('reports a short row as a row error rather than aborting the file', () => {
+    it('accepts a short row when only optional placement columns are absent', () => {
       const result = parseStudentCsv(
         csv(HEADER, 'Asha,Rao,asha@example.com', 'Ravi,Kumar,ravi@example.com,Grade 6,Blue,'),
       );
 
-      expect(result.rows).toHaveLength(1);
-      expect(result.rows[0].email).toBe('ravi@example.com');
-      expect(result.rowErrors[0].errors.map((issue) => issue.code)).toEqual([
-        'MISSING_GRADE_LEVEL',
-        'MISSING_SECTION',
-      ]);
+      expect(result.rows).toHaveLength(2);
+      expect(result.rows.map((row) => row.email)).toEqual(['asha@example.com', 'ravi@example.com']);
+      expect(result.rowErrors).toEqual([]);
     });
   });
 
@@ -122,14 +119,26 @@ describe('parseStudentCsv', () => {
   });
 
   describe('row validation', () => {
+    it('accepts a student without grade level or section', () => {
+      const result = parseStudentCsv(csv(HEADER, 'Asha,Rao,asha@example.com,,,'));
+
+      expect(result.rows).toHaveLength(1);
+      expect(result.rows[0]).toMatchObject({ gradeLevel: '', section: '', rollNumber: null });
+      expect(result.rowErrors).toEqual([]);
+    });
+
+    it('rejects partial placement details', () => {
+      const result = parseStudentCsv(csv(HEADER, 'Asha,Rao,asha@example.com,Grade 5,,12'));
+
+      expect(result.rowErrors[0].errors).toContainEqual(expect.objectContaining({ code: 'MISSING_SECTION' }));
+    });
+
     it('collects every applicable reason for a row, not just the first', () => {
       const result = parseStudentCsv(csv(HEADER, 'Asha,,not-an-email,,,'));
 
       expect(result.rowErrors[0].errors.map((issue) => issue.code)).toEqual([
         'INVALID_EMAIL',
         'MISSING_LAST_NAME',
-        'MISSING_GRADE_LEVEL',
-        'MISSING_SECTION',
       ]);
     });
 
@@ -219,6 +228,21 @@ describe('parseStudentCsv', () => {
       const result = parseStudentCsv(csv(HEADER, ',,,,,', 'Asha,Rao,asha@example.com,Grade 5,A,12'));
 
       expect(result.rows[0].rowNumber).toBe(3);
+    });
+
+    it('generates a password when the CSV cell is blank', () => {
+      const result = parseStudentCsv(
+        csv('first_name,last_name,email,grade_level,section,roll_number,password', 'Asha,Rao,asha@example.com,Grade 5,A,12,'),
+      );
+      expect(result.rows[0].password).toBe('');
+      expect(result.rowErrors).toEqual([]);
+    });
+
+    it('rejects a row whose password matches its email', () => {
+      const result = parseStudentCsv(
+        csv('first_name,last_name,email,grade_level,section,roll_number,password', 'Asha,Rao,asha@example.com,Grade 5,A,12,ASHA@example.com'),
+      );
+      expect(result.rowErrors[0].errors).toContainEqual(expect.objectContaining({ code: 'PASSWORD_MATCHES_EMAIL' }));
     });
   });
 });

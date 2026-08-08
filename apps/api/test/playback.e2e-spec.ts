@@ -2,7 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { PrismaClient, Role } from '@prisma/client';
 import request from 'supertest';
 import { PresignedDownload, PresignedUpload, StorageService, StoredObject } from '../src/storage/storage.service';
-import { ENTITLED_VIDEO_TITLE, SCIENCE_VIDEO_TITLE, seedContentFixtures } from './utils/content-fixtures';
+import { ENTITLED_VIDEO_TITLE, SCIENCE_VIDEO_TITLE, UNENTITLED_VIDEO_TITLE, seedContentFixtures } from './utils/content-fixtures';
 import { createE2eApp } from './utils/e2e-app';
 import { login, loginAllRoles, SEED_PASSWORD } from './utils/login';
 
@@ -21,19 +21,22 @@ describe('Playback (e2e)', () => {
   let app: INestApplication;
   let tokens: Record<Role, string>;
   let teacherB: string;
+  let schoolAdminB: string;
   let entitledId: string;
   let scienceId: string;
+  let wrongGradeId: string;
   const storage = new PlaybackStorage();
 
   beforeAll(async () => {
     await seedContentFixtures();
     const prisma = new PrismaClient();
-    const videos = await prisma.video.findMany({ where: { title: { in: [ENTITLED_VIDEO_TITLE, SCIENCE_VIDEO_TITLE] } }, select: { id: true, title: true } });
+    const videos = await prisma.video.findMany({ where: { title: { in: [ENTITLED_VIDEO_TITLE, SCIENCE_VIDEO_TITLE, UNENTITLED_VIDEO_TITLE] } }, select: { id: true, title: true } });
     await prisma.$disconnect();
     const entitled = videos.find(({ title }) => title === ENTITLED_VIDEO_TITLE);
     const science = videos.find(({ title }) => title === SCIENCE_VIDEO_TITLE);
-    if (!entitled || !science) throw new Error('Playback fixtures missing');
-    entitledId = entitled.id; scienceId = science.id;
+    const wrongGrade = videos.find(({ title }) => title === UNENTITLED_VIDEO_TITLE);
+    if (!entitled || !science || !wrongGrade) throw new Error('Playback fixtures missing');
+    entitledId = entitled.id; scienceId = science.id; wrongGradeId = wrongGrade.id;
     for (const id of [entitledId, scienceId]) {
       storage.texts.set(`videos/${id}/master.m3u8`, '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000\n360p/playlist.m3u8\n');
       storage.texts.set(`videos/${id}/360p/playlist.m3u8`, '#EXTM3U\n#EXTINF:6,\nsegment_000.ts\n');
@@ -41,36 +44,48 @@ describe('Playback (e2e)', () => {
     app = await createE2eApp({ overrideProviders: (builder) => builder.overrideProvider(StorageService).useValue(storage) });
     tokens = await loginAllRoles(app);
     teacherB = await login(app, 'teacher-b@smartteacher.dev', SEED_PASSWORD, 'demo-school-b');
+    schoolAdminB = await login(app, 'admin-b@smartteacher.dev', SEED_PASSWORD, 'demo-school-b');
   });
 
   afterAll(async () => { await app.close(); });
   beforeEach(() => { storage.downloadKeys = []; });
 
-  const postTicket = (id: string, token: string) => request(app.getHttpServer()).post(`/videos/${id}/playback`).set('Authorization', `Bearer ${token}`);
+  const getPlaybackToken = (id: string, token: string) => request(app.getHttpServer()).get(`/videos/${id}/playback-token`).set('Authorization', `Bearer ${token}`);
+  const localPath = (absoluteUrl: string) => {
+    const url = new URL(absoluteUrl);
+    return `${url.pathname}${url.search}`;
+  };
 
   it('checks the entitled grade-and-subject pair for students and unentitled schools', async () => {
-    await postTicket(scienceId, tokens[Role.STUDENT]).expect(404);
-    await postTicket(entitledId, teacherB).expect(404);
+    await getPlaybackToken(scienceId, tokens[Role.STUDENT]).expect(404);
+    await getPlaybackToken(wrongGradeId, tokens[Role.STUDENT]).expect(404);
+    await getPlaybackToken(entitledId, teacherB).expect(404);
+  });
+
+  it('mints for an entitled SCHOOL_ADMIN and hides the video from an unentitled admin', async () => {
+    await getPlaybackToken(entitledId, tokens[Role.SCHOOL_ADMIN]).expect(200);
+    await getPlaybackToken(entitledId, schoolAdminB).expect(404);
   });
 
   it('mints for SUPER_ADMIN through the same route and rewrites a tokenized master', async () => {
-    const ticket = await postTicket(entitledId, tokens[Role.SUPER_ADMIN]).expect(201);
-    const master = await request(app.getHttpServer()).get(ticket.body.manifestPath).expect(200);
+    const ticket = await getPlaybackToken(entitledId, tokens[Role.SUPER_ADMIN]).expect(200);
+    expect(ticket.body.manifestUrl).toMatch(/^http:\/\//);
+    const master = await request(app.getHttpServer()).get(localPath(ticket.body.manifestUrl)).expect(200);
     expect(master.text).toContain('360p/playlist.m3u8?t=');
     expect(master.text).not.toContain('videos/');
     expect(master.text).not.toContain('ingest-bucket');
   });
 
   it('refuses a video-A token on video B and never presigns storage', async () => {
-    const ticket = await postTicket(entitledId, tokens[Role.STUDENT]).expect(201);
-    await request(app.getHttpServer()).get(ticket.body.manifestPath).expect(200);
-    await request(app.getHttpServer()).get(ticket.body.manifestPath.replace(entitledId, scienceId)).expect(401);
+    const ticket = await getPlaybackToken(entitledId, tokens[Role.STUDENT]).expect(200);
+    await request(app.getHttpServer()).get(localPath(ticket.body.manifestUrl)).expect(200);
+    await request(app.getHttpServer()).get(localPath(ticket.body.manifestUrl.replace(entitledId, scienceId))).expect(401);
     expect(storage.downloadKeys).toEqual([]);
   });
 
   it('serves the literal variant route and presigns only a validated segment key', async () => {
-    const ticket = await postTicket(entitledId, tokens[Role.STUDENT]).expect(201);
-    const token = new URL(ticket.body.manifestPath, 'http://api.test').searchParams.get('t');
+    const ticket = await getPlaybackToken(entitledId, tokens[Role.STUDENT]).expect(200);
+    const token = new URL(ticket.body.manifestUrl).searchParams.get('t');
     if (!token) throw new Error('Playback token missing');
     const variant = await request(app.getHttpServer()).get(`/videos/${entitledId}/hls/360p/playlist.m3u8?t=${encodeURIComponent(token)}`).expect(200);
     expect(variant.text).toContain('segment_000.ts?t=');

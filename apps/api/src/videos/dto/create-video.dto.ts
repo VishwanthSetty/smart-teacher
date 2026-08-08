@@ -26,15 +26,13 @@ export class CreateVideoDto {
   @IsPositive()
   durationSecs?: number;
 
+  // Where this video sits in the curriculum tree. The grade level and subject are
+  // implied by the node's curriculum, so neither is accepted here — passing them would
+  // be a second, contradictable source of truth for the entitlement key.
   @ApiProperty()
   @IsString()
   @MinLength(1)
-  gradeLevelId!: string;
-
-  @ApiProperty()
-  @IsString()
-  @MinLength(1)
-  subjectId!: string;
+  contentNodeId!: string;
 
   // Declared up front so an unacceptable file is refused *before* an upload URL exists,
   // and so the type can be bound into the signature. Re-verified against the stored

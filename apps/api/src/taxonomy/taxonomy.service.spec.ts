@@ -23,8 +23,7 @@ describe('TaxonomyService', () => {
       delete: jest.Mock;
     };
     subject: { findMany: jest.Mock; create: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
-    video: { count: jest.Mock };
-    schoolContentEntitlement: { count: jest.Mock };
+    curriculum: { count: jest.Mock };
     teacherAssignment: { count: jest.Mock };
     section: { count: jest.Mock };
     $transaction: jest.Mock;
@@ -40,8 +39,7 @@ describe('TaxonomyService', () => {
         delete: jest.fn(),
       },
       subject: { findMany: jest.fn(), create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
-      video: { count: jest.fn().mockResolvedValue(0) },
-      schoolContentEntitlement: { count: jest.fn().mockResolvedValue(0) },
+      curriculum: { count: jest.fn().mockResolvedValue(0) },
       teacherAssignment: { count: jest.fn().mockResolvedValue(0) },
       section: { count: jest.fn().mockResolvedValue(0) },
       $transaction: jest.fn((operations: unknown[]) => Promise.all(operations)),
@@ -148,25 +146,15 @@ describe('TaxonomyService', () => {
       expect(prisma.gradeLevel.delete).not.toHaveBeenCalled();
     });
 
-    it('refuses to delete a grade level that still has platform videos', async () => {
+    // The curriculum count subsumes what used to be separate video and entitlement
+    // checks: videos hang off content nodes and entitlements point at curricula, so both
+    // reach a grade level only through Curriculum.
+    it('refuses to delete a grade level that still has curricula', async () => {
       prisma.gradeLevel.findUnique.mockResolvedValue({ id: 'g5' });
-      prisma.video.count.mockResolvedValue(1);
+      prisma.curriculum.count.mockResolvedValue(1);
 
       await expect(service.deleteGradeLevel('g5')).rejects.toThrow(ConflictException);
-      expect(prisma.gradeLevel.delete).not.toHaveBeenCalled();
-    });
-
-    // Pins the entitlement check to the SchoolContentEntitlement root, same reasoning as
-    // updateSubject's equivalent check: asking from a GradeLevel relation would throw
-    // MissingTenantContextError against a real SUPER_ADMIN request.
-    it('refuses to delete a grade level a school is still entitled to', async () => {
-      prisma.gradeLevel.findUnique.mockResolvedValue({ id: 'g5' });
-      prisma.schoolContentEntitlement.count.mockResolvedValue(1);
-
-      await expect(service.deleteGradeLevel('g5')).rejects.toThrow(ConflictException);
-      expect(prisma.schoolContentEntitlement.count).toHaveBeenCalledWith({
-        where: { gradeLevelId: 'g5' },
-      });
+      expect(prisma.curriculum.count).toHaveBeenCalledWith({ where: { gradeLevelId: 'g5' } });
       expect(prisma.gradeLevel.delete).not.toHaveBeenCalled();
     });
 
@@ -242,47 +230,31 @@ describe('TaxonomyService', () => {
 
       await service.updateSubject('sub-1', { name: 'Maths' });
 
-      expect(prisma.video.count).not.toHaveBeenCalled();
+      expect(prisma.curriculum.count).not.toHaveBeenCalled();
       expect(prisma.subject.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { name: 'Maths', status: undefined } }),
       );
     });
 
-    it('refuses to retire a subject that still has platform videos', async () => {
+    // The curriculum count subsumes what used to be separate video and entitlement
+    // checks: both reach a subject only through Curriculum now.
+    it('refuses to retire a subject that still has curricula', async () => {
       prisma.subject.findUnique.mockResolvedValue(ACTIVE);
-      prisma.video.count.mockResolvedValue(1);
-      prisma.schoolContentEntitlement.count.mockResolvedValue(0);
+      prisma.curriculum.count.mockResolvedValue(1);
 
       await expect(
         service.updateSubject('sub-1', { status: SubjectStatus.RETIRED }),
       ).rejects.toThrow(ConflictException);
+      expect(prisma.curriculum.count).toHaveBeenCalledWith({ where: { subjectId: 'sub-1' } });
       expect(prisma.subject.update).not.toHaveBeenCalled();
     });
 
-    // Pins the entitlement check to the SchoolContentEntitlement root. Expressing it as
-    // subject.count({ where: { entitlements: { some: {} } } }) would pass a mock-based
-    // test but throw MissingTenantContextError against a real SUPER_ADMIN request.
-    it('refuses to retire a subject a school is still entitled to', async () => {
-      prisma.subject.findUnique.mockResolvedValue(ACTIVE);
-      prisma.video.count.mockResolvedValue(0);
-      prisma.schoolContentEntitlement.count.mockResolvedValue(1);
-
-      await expect(
-        service.updateSubject('sub-1', { status: SubjectStatus.RETIRED }),
-      ).rejects.toThrow(ConflictException);
-      expect(prisma.schoolContentEntitlement.count).toHaveBeenCalledWith({
-        where: { subjectId: 'sub-1' },
-      });
-      expect(prisma.subject.update).not.toHaveBeenCalled();
-    });
-
-    // Same root-at-the-referencing-model reasoning as the entitlement check above:
-    // TeacherAssignment is tenant-scoped, so asking it from a Subject root would throw
-    // for the SUPER_ADMIN who is the only caller here.
+    // Rooted at the referencing model on purpose: TeacherAssignment is tenant-scoped, so
+    // asking it from a Subject root would throw MissingTenantContextError for the
+    // SUPER_ADMIN who is the only caller here.
     it('refuses to retire a subject teachers are still assigned to', async () => {
       prisma.subject.findUnique.mockResolvedValue(ACTIVE);
-      prisma.video.count.mockResolvedValue(0);
-      prisma.schoolContentEntitlement.count.mockResolvedValue(0);
+      prisma.curriculum.count.mockResolvedValue(0);
       prisma.teacherAssignment.count.mockResolvedValue(1);
 
       await expect(
@@ -296,8 +268,7 @@ describe('TaxonomyService', () => {
 
     it('retires a subject nothing references', async () => {
       prisma.subject.findUnique.mockResolvedValue(ACTIVE);
-      prisma.video.count.mockResolvedValue(0);
-      prisma.schoolContentEntitlement.count.mockResolvedValue(0);
+      prisma.curriculum.count.mockResolvedValue(0);
       prisma.subject.update.mockResolvedValue({ status: SubjectStatus.RETIRED });
 
       await service.updateSubject('sub-1', { status: SubjectStatus.RETIRED });
@@ -315,8 +286,7 @@ describe('TaxonomyService', () => {
 
       await service.updateSubject('sub-1', { status: SubjectStatus.RETIRED });
 
-      expect(prisma.video.count).not.toHaveBeenCalled();
-      expect(prisma.schoolContentEntitlement.count).not.toHaveBeenCalled();
+      expect(prisma.curriculum.count).not.toHaveBeenCalled();
       expect(prisma.teacherAssignment.count).not.toHaveBeenCalled();
     });
 
@@ -326,7 +296,7 @@ describe('TaxonomyService', () => {
 
       await service.updateSubject('sub-1', { status: SubjectStatus.ACTIVE });
 
-      expect(prisma.video.count).not.toHaveBeenCalled();
+      expect(prisma.curriculum.count).not.toHaveBeenCalled();
       expect(prisma.subject.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { name: undefined, status: SubjectStatus.ACTIVE } }),
       );

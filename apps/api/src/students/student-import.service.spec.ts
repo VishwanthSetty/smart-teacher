@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Role, StudentImportBatchStatus, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
-import { InvitesService } from '../invites/invites.service';
+import { PasswordsService } from '../passwords/passwords.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.interface';
 import { EnrollmentsService } from './enrollments.service';
 import { StudentImportService } from './student-import.service';
@@ -46,8 +46,8 @@ describe('StudentImportService', () => {
     };
     $transaction: jest.Mock;
   };
-  let mailService: { sendUserInvite: jest.Mock; sendPasswordReset: jest.Mock };
-  let invitesService: { mintToken: jest.Mock };
+  let mailService: { sendCredentials: jest.Mock };
+  let passwordsService: { resolve: jest.Mock };
   let enrollments: { enrollMany: jest.Mock };
 
   beforeEach(async () => {
@@ -66,19 +66,8 @@ describe('StudentImportService', () => {
       $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(prisma)),
     };
 
-    mailService = { sendUserInvite: jest.fn().mockResolvedValue(undefined), sendPasswordReset: jest.fn() };
-
-    let tokenSeq = 0;
-    invitesService = {
-      mintToken: jest.fn(() => {
-        tokenSeq += 1;
-        return {
-          token: `token-${tokenSeq}`,
-          tokenHash: `hash-${tokenSeq}`,
-          expiresAt: new Date('2030-01-01'),
-        };
-      }),
-    };
+    mailService = { sendCredentials: jest.fn().mockResolvedValue(undefined) };
+    passwordsService = { resolve: jest.fn().mockResolvedValue({ password: 'Teal-Fox-7412', passwordHash: 'hash' }) };
 
     enrollments = { enrollMany: jest.fn().mockResolvedValue(undefined) };
 
@@ -103,7 +92,7 @@ describe('StudentImportService', () => {
         StudentImportService,
         { provide: PrismaService, useValue: prisma },
         { provide: MailService, useValue: mailService },
-        { provide: InvitesService, useValue: invitesService },
+        { provide: PasswordsService, useValue: passwordsService },
         { provide: EnrollmentsService, useValue: enrollments },
       ],
     }).compile();
@@ -112,6 +101,29 @@ describe('StudentImportService', () => {
   });
 
   describe('createBatch', () => {
+    it('accepts a student with no section placement', async () => {
+      prisma.section.findMany.mockResolvedValue([]);
+      const preview = await service.createBatch(
+        upload(HEADER, 'Asha,Rao,asha@example.com,,,'),
+        ACTOR,
+      );
+
+      expect(preview.validCount).toBe(1);
+      expect(preview.validRows[0]).toMatchObject({ gradeLevel: '', section: '' });
+    });
+
+    it('never returns the password in the import preview', async () => {
+      const preview = await service.createBatch(
+        upload(
+          'first_name,last_name,email,grade_level,section,roll_number,password',
+          'Asha,Rao,asha@example.com,Grade 5,A,12,Teal-Fox-7412',
+        ),
+        ACTOR,
+      );
+      expect(preview.validRows[0]).toMatchObject({ hasPassword: true });
+      expect(preview.validRows[0]).not.toHaveProperty('password');
+    });
+
     it('writes only a DRAFT batch — no student exists until the admin confirms', async () => {
       const preview = await service.createBatch(
         upload(HEADER, 'Asha,Rao,asha@example.com,Grade 5,A,12'),
@@ -217,7 +229,7 @@ describe('StudentImportService', () => {
       ]);
     });
 
-    it('creates the valid rows as PENDING students', async () => {
+    it('creates the valid rows as ACTIVE students', async () => {
       prisma.studentImportBatch.findUnique.mockResolvedValue(draftBatch([ROW]));
 
       const result = await service.confirmBatch('batch-1', ACTOR);
@@ -229,7 +241,7 @@ describe('StudentImportService', () => {
               email: 'asha@example.com',
               name: 'Asha Rao',
               role: Role.STUDENT,
-              status: UserStatus.PENDING,
+              status: UserStatus.ACTIVE,
               schoolId: 'school-1',
             }),
           ],
@@ -290,26 +302,26 @@ describe('StudentImportService', () => {
       expect(result.invalidRows[0].errors[0].code).toBe('ROLL_NUMBER_TAKEN');
     });
 
-    it('sends one invite per created student', async () => {
+    it('sends one credentials email per created student when requested', async () => {
       prisma.studentImportBatch.findUnique.mockResolvedValue(draftBatch([ROW]));
 
-      const result = await service.confirmBatch('batch-1', ACTOR);
+      const result = await service.confirmBatch('batch-1', ACTOR, true);
 
-      expect(mailService.sendUserInvite).toHaveBeenCalledWith(
+      expect(mailService.sendCredentials).toHaveBeenCalledWith(
         expect.objectContaining({ email: 'asha@example.com', role: Role.STUDENT, schoolName: 'Demo' }),
       );
-      expect(result.invitesSent).toBe(1);
+      expect(result.emailsSent).toBe(1);
     });
 
     it('counts a failed invite without failing the import — the student still exists', async () => {
       prisma.studentImportBatch.findUnique.mockResolvedValue(draftBatch([ROW]));
-      mailService.sendUserInvite.mockRejectedValue(new Error('smtp down'));
+      mailService.sendCredentials.mockRejectedValue(new Error('smtp down'));
 
-      const result = await service.confirmBatch('batch-1', ACTOR);
+      const result = await service.confirmBatch('batch-1', ACTOR, true);
 
       expect(result.createdCount).toBe(1);
-      expect(result.invitesFailed).toBe(1);
-      expect(result.invitesSent).toBe(0);
+      expect(result.emailsFailed).toBe(1);
+      expect(result.emailsSent).toBe(0);
     });
 
     it('rejects a second confirm of the same batch', async () => {
@@ -357,7 +369,7 @@ describe('StudentImportService', () => {
 
       const csv = await service.buildErrorReport('batch-1');
 
-      expect(csv).toContain('row_number,first_name,last_name,email,grade_level,section,roll_number,errors');
+      expect(csv).toContain('row_number,first_name,last_name,email,grade_level,section,roll_number,password,errors');
       expect(csv).toContain('4,Bad,Row,bad@example.com,Grade 9,A,1');
       expect(csv).toContain('Grade 9 is not a grade level.');
     });

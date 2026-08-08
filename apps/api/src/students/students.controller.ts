@@ -32,6 +32,9 @@ import { StudentImportService } from './student-import.service';
 import { buildTemplateCsv } from './student-import-csv';
 import { MAX_IMPORT_FILE_BYTES } from './student-import.constants';
 import { CreateStudentDto } from './dto/create-student.dto';
+import { SetUserPasswordDto } from '../passwords/dto/set-user-password.dto';
+import { ConfirmImportDto } from '../passwords/dto/confirm-import.dto';
+import { UserPasswordEntity } from '../passwords/entities/user-password.entity';
 import { UpdateStudentDto } from './dto/update-student.dto';
 import { ListStudentsQueryDto } from './dto/list-students-query.dto';
 import { StudentEntity } from './entities/student.entity';
@@ -110,9 +113,10 @@ export class StudentsController {
   @ApiResponse({ status: 409, description: 'Import already confirmed' })
   confirmImportBatch(
     @Param('batchId') batchId: string,
+    @Body() dto: ConfirmImportDto,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<StudentImportResultEntity> {
-    return this.studentImportService.confirmBatch(batchId, user);
+    return this.studentImportService.confirmBatch(batchId, user, dto?.sendCredentialsEmail ?? false);
   }
 
   @Get('bulk/:batchId/errors')
@@ -139,6 +143,21 @@ export class StudentsController {
   @ApiResponse({ status: 200, type: PaginatedStudentsEntity })
   findAll(@Query() query: ListStudentsQueryDto): Promise<PaginatedStudentsEntity> {
     return this.studentsService.findAll(query);
+  }
+
+  @Get(':id/password')
+  @Roles(Role.SCHOOL_ADMIN)
+  @ApiResponse({ status: 200, type: UserPasswordEntity })
+  getPassword(@Param('id') id: string): Promise<UserPasswordEntity> {
+    return this.studentsService.getPassword(id);
+  }
+
+  @Post(':id/password')
+  @Roles(Role.SCHOOL_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiResponse({ status: 200, type: UserPasswordEntity })
+  setPassword(@Param('id') id: string, @Body() dto: SetUserPasswordDto): Promise<{ password: string }> {
+    return this.studentsService.setPassword(id, dto.password);
   }
 
   @Patch(':id')

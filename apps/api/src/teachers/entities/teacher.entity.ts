@@ -14,6 +14,9 @@ export class TeacherSubjectEntity {
 
 // Never the Prisma row: passwordHash, token hashes and internal ids stay server-side.
 export class TeacherEntity {
+  @ApiProperty({ required: false, description: 'Returned only when the teacher is created.' })
+  password?: string;
+
   @ApiProperty()
   id!: string;
 

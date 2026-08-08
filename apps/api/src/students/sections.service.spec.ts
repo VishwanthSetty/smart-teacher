@@ -19,13 +19,13 @@ describe('SectionsService', () => {
   let service: SectionsService;
   let prisma: {
     gradeLevel: { findUnique: jest.Mock };
-    section: { findMany: jest.Mock; create: jest.Mock };
+    section: { count: jest.Mock; findMany: jest.Mock; create: jest.Mock };
   };
 
   beforeEach(async () => {
     prisma = {
       gradeLevel: { findUnique: jest.fn() },
-      section: { findMany: jest.fn(), create: jest.fn() },
+      section: { count: jest.fn(), findMany: jest.fn(), create: jest.fn() },
     };
 
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -33,6 +33,13 @@ describe('SectionsService', () => {
     }).compile();
 
     service = moduleRef.get(SectionsService);
+  });
+
+  it('counts the tenant-scoped sections', async () => {
+    prisma.section.count.mockResolvedValue(4);
+
+    await expect(service.countAll()).resolves.toBe(4);
+    expect(prisma.section.count).toHaveBeenCalledWith();
   });
 
   describe('create', () => {

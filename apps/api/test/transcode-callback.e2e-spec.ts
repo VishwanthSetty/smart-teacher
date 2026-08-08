@@ -56,8 +56,7 @@ describe('Transcode callback (e2e)', () => {
   let tokens: Record<Role, string>;
   let prisma: PrismaClient;
   let secret: string;
-  let gradeLevelId: string;
-  let subjectId: string;
+  let contentNodeId: string;
 
   /**
    * Signs exactly the bytes it sends. Building the body string here rather than handing
@@ -95,8 +94,7 @@ describe('Transcode callback (e2e)', () => {
     const video = await prisma.video.create({
       data: {
         title: `${TITLE_PREFIX}${Date.now()}-${Math.random()}`,
-        gradeLevelId,
-        subjectId,
+        contentNodeId,
         status,
         transcodeAttempts,
       },
@@ -107,8 +105,7 @@ describe('Transcode callback (e2e)', () => {
 
   beforeAll(async () => {
     const fixtures = await seedContentFixtures();
-    gradeLevelId = fixtures.grade5Id;
-    subjectId = fixtures.mathsId;
+    contentNodeId = fixtures.g5MathsTopicId;
 
     prisma = new PrismaClient();
     await prisma.video.deleteMany({ where: { title: { startsWith: TITLE_PREFIX } } });

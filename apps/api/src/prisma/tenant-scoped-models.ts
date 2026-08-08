@@ -24,6 +24,12 @@ export const TENANT_SCOPED_MODELS = [
 export const PLATFORM_GLOBAL_MODELS = [
   'GradeLevel',
   'Subject',
+  // The curriculum structure below the grade/subject spine. Authored once for the whole
+  // platform; a school reaches a curriculum only through SchoolContentEntitlement.
+  'CurriculumSchema',
+  'CurriculumLevel',
+  'Curriculum',
+  'ContentNode',
   'Video',
   // Hangs off Video and inherits its globalness — a rendition is one encode of platform
   // content, not something a school owns.

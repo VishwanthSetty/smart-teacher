@@ -3,12 +3,14 @@ import { Role } from '@prisma/client';
 import request from 'supertest';
 import { createE2eApp } from './utils/e2e-app';
 import { SEED_PASSWORD, login, loginAllRoles } from './utils/login';
+import { seedContentFixtures } from './utils/content-fixtures';
 
 describe('Dashboard stats (e2e)', () => {
   let app: INestApplication;
   let tokens: Record<Role, string>;
 
   beforeAll(async () => {
+    await seedContentFixtures();
     app = await createE2eApp();
     tokens = await loginAllRoles(app);
   });
@@ -29,20 +31,20 @@ describe('Dashboard stats (e2e)', () => {
       students: expect.any(Number),
       teachers: expect.any(Number),
       pendingInvites: expect.any(Number),
-      classes: null,
+      classes: expect.any(Number),
       latestTimetable: null,
     });
     expect(response.body.students).toBeGreaterThanOrEqual(1);
     expect(response.body.teachers).toBeGreaterThanOrEqual(1);
   });
 
-  it('reports classes and the latest timetable as null while those models are unbuilt', async () => {
+  it('reports the tenant section count and leaves the unbuilt timetable null', async () => {
     const response = await request(app.getHttpServer())
       .get('/admin/stats')
       .set('Authorization', `Bearer ${tokens[Role.SCHOOL_ADMIN]}`)
       .expect(200);
 
-    expect(response.body.classes).toBeNull();
+    expect(response.body.classes).toBeGreaterThanOrEqual(1);
     expect(response.body.latestTimetable).toBeNull();
   });
 

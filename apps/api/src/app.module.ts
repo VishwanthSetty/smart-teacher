@@ -10,6 +10,7 @@ import { SchoolsModule } from './schools/schools.module';
 import { StatsModule } from './stats/stats.module';
 import { EntitlementsModule } from './entitlements/entitlements.module';
 import { TaxonomyModule } from './taxonomy/taxonomy.module';
+import { CurriculumModule } from './curriculum/curriculum.module';
 import { TeachersModule } from './teachers/teachers.module';
 import { StudentsModule } from './students/students.module';
 import { VideosModule } from './videos/videos.module';
@@ -24,7 +25,15 @@ import { PlaybackTokenGuard } from './playback/playback-token.guard';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    // Jest sets NODE_ENV=test on this same process before AppModule is compiled (e2e specs
+    // boot Nest in-process via createE2eApp), so .env.test — a separate DATABASE_URL — is
+    // picked up here rather than the dev .env. Without this, e2e runs write straight into
+    // the docker-compose dev database and never clean up after themselves.
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: process.env.NODE_ENV === 'test' ? '.env.test' : '.env',
+      validate: validateEnv,
+    }),
     TenancyModule,
     PrismaModule,
     AuthModule,
@@ -33,6 +42,7 @@ import { PlaybackTokenGuard } from './playback/playback-token.guard';
     StatsModule,
     EntitlementsModule,
     TaxonomyModule,
+    CurriculumModule,
     TeachersModule,
     StudentsModule,
     VideosModule,

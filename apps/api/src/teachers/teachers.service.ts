@@ -1,8 +1,8 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, Role, SubjectStatus, UserStatus } from '@prisma/client';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Prisma, RefreshTokenRevokeReason, Role, SubjectStatus, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
-import { InvitesService } from '../invites/invites.service';
+import { PasswordsService } from '../passwords/passwords.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.interface';
 import { CreateTeacherDto } from './dto/create-teacher.dto';
 import { TeacherEntity } from './entities/teacher.entity';
@@ -21,10 +21,12 @@ function conflictTarget(error: unknown): string {
 
 @Injectable()
 export class TeachersService {
+  private readonly logger = new Logger(TeachersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly mailService: MailService,
-    private readonly invitesService: InvitesService,
+    private readonly passwordsService: PasswordsService,
   ) {}
 
   async create(dto: CreateTeacherDto, actor: AuthenticatedUser): Promise<TeacherEntity> {
@@ -53,8 +55,7 @@ export class TeachersService {
       );
     }
 
-    const { token: inviteToken, tokenHash: inviteTokenHash, expiresAt: inviteTokenExpiresAt } =
-      this.invitesService.mintToken();
+    const { password, passwordHash } = await this.passwordsService.resolve(dto.password, dto.email);
     const name = `${dto.firstName} ${dto.lastName}`;
 
     let teacher: TeacherRow;
@@ -67,10 +68,11 @@ export class TeachersService {
             firstName: dto.firstName,
             lastName: dto.lastName,
             role: Role.TEACHER,
-            status: UserStatus.PENDING,
+            status: UserStatus.ACTIVE,
+            activatedAt: new Date(),
             schoolId,
-            inviteTokenHash,
-            inviteTokenExpiresAt,
+            passwordHash,
+            plainPassword: password,
           },
         });
 
@@ -92,19 +94,24 @@ export class TeachersService {
       throw error;
     }
 
-    // After the transaction commits: the teacher already exists as PENDING even if the
-    // mail send fails, and resend-invite is the repair path (mirrors StudentsService).
-    await this.mailService.sendUserInvite({
-      email: dto.email,
-      name,
-      role: Role.TEACHER,
-      schoolName: school.name,
-      schoolSlug: school.slug,
-      inviteToken,
-    });
+    if (dto.sendCredentialsEmail) {
+      try {
+        await this.mailService.sendCredentials({
+          email: dto.email,
+          name,
+          role: Role.TEACHER,
+          schoolName: school.name,
+          schoolSlug: school.slug,
+          password,
+        });
+      } catch (error) {
+        this.logger.error(`Failed to send credentials to ${dto.email}`, error instanceof Error ? error.stack : undefined);
+      }
+    }
 
     return {
       id: teacher.id,
+      password,
       email: teacher.email,
       firstName: teacher.firstName,
       lastName: teacher.lastName,
@@ -114,5 +121,29 @@ export class TeachersService {
       createdAt: teacher.createdAt,
       subjects: subjects.map((subject) => ({ id: subject.id, name: subject.name, code: subject.code })),
     };
+  }
+
+  async getPassword(id: string): Promise<{ password: string | null }> {
+    const teacher = await this.prisma.user.findUnique({ where: { id }, select: { role: true, plainPassword: true } });
+    if (!teacher || teacher.role !== Role.TEACHER) {
+      throw new NotFoundException('Teacher not found');
+    }
+    return { password: teacher.plainPassword };
+  }
+
+  async setPassword(id: string, supplied: string | undefined): Promise<{ password: string }> {
+    const teacher = await this.prisma.user.findUnique({ where: { id }, select: { role: true, email: true } });
+    if (!teacher || teacher.role !== Role.TEACHER) {
+      throw new NotFoundException('Teacher not found');
+    }
+    const { password, passwordHash } = await this.passwordsService.resolve(supplied, teacher.email);
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id }, data: { passwordHash, plainPassword: password } }),
+      this.prisma.refreshToken.updateMany({
+        where: { userId: id, revokedAt: null },
+        data: { revokedAt: new Date(), revokeReason: RefreshTokenRevokeReason.PASSWORD_RESET },
+      }),
+    ]);
+    return { password };
   }
 }

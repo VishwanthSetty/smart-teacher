@@ -9,6 +9,9 @@ export function CreateTeacherForm({ subjects }: { subjects: Subject[] }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [sendCredentialsEmail, setSendCredentialsEmail] = useState(false);
+  const [createdPassword, setCreatedPassword] = useState<string | null>(null);
   const [subjectIds, setSubjectIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -22,6 +25,7 @@ export function CreateTeacherForm({ subjects }: { subjects: Subject[] }) {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    setCreatedPassword(null);
     setIsSubmitting(true);
 
     const response = await fetch('/api/teachers', {
@@ -31,6 +35,8 @@ export function CreateTeacherForm({ subjects }: { subjects: Subject[] }) {
         firstName,
         lastName,
         email,
+        password: password || undefined,
+        sendCredentialsEmail,
         subjectIds: subjectIds.length > 0 ? subjectIds : undefined,
       }),
     });
@@ -43,9 +49,13 @@ export function CreateTeacherForm({ subjects }: { subjects: Subject[] }) {
       return;
     }
 
+    const teacher = await response.json();
+    setCreatedPassword(teacher.password);
     setFirstName('');
     setLastName('');
     setEmail('');
+    setPassword('');
+    setSendCredentialsEmail(false);
     setSubjectIds([]);
     router.refresh();
   }
@@ -101,6 +111,31 @@ export function CreateTeacherForm({ subjects }: { subjects: Subject[] }) {
         </div>
 
         <div className="space-y-1 sm:col-span-2">
+          <label htmlFor="teacherPassword" className="block text-sm font-medium text-gray-700">
+            Password (leave blank to generate one)
+          </label>
+          <input
+            id="teacherPassword"
+            type="text"
+            minLength={8}
+            maxLength={72}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
+          />
+        </div>
+
+        <label className="flex items-center gap-2 text-sm text-gray-700 sm:col-span-2">
+          <input
+            type="checkbox"
+            checked={sendCredentialsEmail}
+            onChange={(e) => setSendCredentialsEmail(e.target.checked)}
+            className="rounded border-gray-300"
+          />
+          Email credentials
+        </label>
+
+        <div className="space-y-1 sm:col-span-2">
           <span className="block text-sm font-medium text-gray-700">Subjects taught (optional)</span>
           {subjects.length === 0 ? (
             <p className="text-sm text-gray-500">No subjects available yet.</p>
@@ -123,6 +158,14 @@ export function CreateTeacherForm({ subjects }: { subjects: Subject[] }) {
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {createdPassword && (
+        <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-900">
+          <p>Teacher created. Password: <strong>{createdPassword}</strong></p>
+          <button type="button" onClick={() => void navigator.clipboard.writeText(createdPassword)} className="mt-2 underline">
+            Copy password
+          </button>
+        </div>
+      )}
 
       <button
         type="submit"

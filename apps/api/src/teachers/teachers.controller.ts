@@ -31,6 +31,9 @@ import { buildTemplateCsv } from './teacher-import-csv';
 import { MAX_IMPORT_FILE_BYTES } from './teacher-import.constants';
 import { CreateTeacherDto } from './dto/create-teacher.dto';
 import { TeacherEntity } from './entities/teacher.entity';
+import { SetUserPasswordDto } from '../passwords/dto/set-user-password.dto';
+import { ConfirmImportDto } from '../passwords/dto/confirm-import.dto';
+import { UserPasswordEntity } from '../passwords/entities/user-password.entity';
 import {
   TeacherImportPreviewEntity,
   TeacherImportResultEntity,
@@ -108,9 +111,10 @@ export class TeachersController {
   @ApiResponse({ status: 409, description: 'Import already confirmed' })
   confirmBatch(
     @Param('batchId') batchId: string,
+    @Body() dto: ConfirmImportDto,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<TeacherImportResultEntity> {
-    return this.teacherImportService.confirmBatch(batchId, user);
+    return this.teacherImportService.confirmBatch(batchId, user, dto?.sendCredentialsEmail ?? false);
   }
 
   @Get('bulk/:batchId/errors')
@@ -120,5 +124,20 @@ export class TeachersController {
   @ApiResponse({ status: 404, description: 'Import not found' })
   getErrorReport(@Param('batchId') batchId: string): Promise<string> {
     return this.teacherImportService.buildErrorReport(batchId);
+  }
+
+  @Get(':id/password')
+  @ApiOperation({ summary: 'Reveal the admin-readable teacher password' })
+  @ApiResponse({ status: 200, type: UserPasswordEntity })
+  getPassword(@Param('id') id: string): Promise<UserPasswordEntity> {
+    return this.teachersService.getPassword(id);
+  }
+
+  @Post(':id/password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Set or generate a teacher password and revoke live sessions' })
+  @ApiResponse({ status: 200, type: UserPasswordEntity })
+  setPassword(@Param('id') id: string, @Body() dto: SetUserPasswordDto): Promise<{ password: string }> {
+    return this.teachersService.setPassword(id, dto.password);
   }
 }

@@ -16,7 +16,7 @@ export class PlaybackController {
   constructor(private readonly playback: PlaybackService) {}
 
   @Get(':id/playback-token')
-  @Roles(Role.SUPER_ADMIN, Role.TEACHER, Role.STUDENT)
+  @Roles(Role.SUPER_ADMIN, Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT)
   @ApiResponse({ status: 200, type: PlaybackTokenEntity })
   create(
     @Param('id') id: string,

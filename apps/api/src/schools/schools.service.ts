@@ -1,4 +1,5 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { Prisma, Role, SchoolStatus, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
@@ -9,6 +10,9 @@ import { ListSchoolsQueryDto } from './dto/list-schools-query.dto';
 import { SchoolEntity } from './entities/school.entity';
 import { PaginatedSchoolsEntity } from './entities/paginated-schools.entity';
 
+// Matches the hash cost used everywhere else a password is hashed (invites, password reset).
+const BCRYPT_ROUNDS = 10;
+
 @Injectable()
 export class SchoolsService {
   constructor(
@@ -18,12 +22,29 @@ export class SchoolsService {
   ) {}
 
   async create(dto: CreateSchoolDto): Promise<SchoolEntity> {
-    const { token: inviteToken, tokenHash: inviteTokenHash, expiresAt: inviteTokenExpiresAt } =
-      this.invitesService.mintToken();
+    const sendInvite = dto.sendInvite ?? true;
+
+    if (!dto.adminPassword && !sendInvite) {
+      throw new BadRequestException(
+        'Provide an initial password or send an invite email so the school admin can sign in',
+      );
+    }
+    if (dto.adminPassword && dto.adminPassword.toLowerCase() === dto.adminEmail.toLowerCase()) {
+      throw new BadRequestException('Password must not match the admin email');
+    }
+
+    // Password mode activates the admin immediately and skips the invite token entirely;
+    // invite mode keeps today's PENDING + set-password-link behaviour.
+    const passwordHash = dto.adminPassword
+      ? await bcrypt.hash(dto.adminPassword, BCRYPT_ROUNDS)
+      : null;
+    const invite = passwordHash
+      ? null
+      : this.invitesService.mintToken();
 
     let school;
     try {
-      // One transaction: the school and its first (pending) admin are created together.
+      // One transaction: the school and its first admin are created together.
       school = await this.prisma.$transaction(async (tx) => {
         const created = await tx.school.create({
           data: {
@@ -39,10 +60,14 @@ export class SchoolsService {
             email: dto.adminEmail,
             name: dto.adminName,
             role: Role.SCHOOL_ADMIN,
-            status: UserStatus.PENDING,
             schoolId: created.id,
-            inviteTokenHash,
-            inviteTokenExpiresAt,
+            ...(passwordHash
+              ? { status: UserStatus.ACTIVE, passwordHash, activatedAt: new Date() }
+              : {
+                  status: UserStatus.PENDING,
+                  inviteTokenHash: invite?.tokenHash,
+                  inviteTokenExpiresAt: invite?.expiresAt,
+                }),
           },
         });
 
@@ -55,14 +80,25 @@ export class SchoolsService {
       throw error;
     }
 
-    await this.mailService.sendUserInvite({
-      email: dto.adminEmail,
-      name: dto.adminName,
-      role: Role.SCHOOL_ADMIN,
-      schoolName: school.name,
-      schoolSlug: school.slug,
-      inviteToken,
-    });
+    if (invite) {
+      await this.mailService.sendUserInvite({
+        email: dto.adminEmail,
+        name: dto.adminName,
+        role: Role.SCHOOL_ADMIN,
+        schoolName: school.name,
+        schoolSlug: school.slug,
+        inviteToken: invite.token,
+      });
+    } else if (sendInvite) {
+      // A password was already set — send a welcome notice, never a set-password link
+      // (the account is ACTIVE, and InvitesService.redeem only accepts PENDING users).
+      await this.mailService.sendSchoolAdminWelcome({
+        email: dto.adminEmail,
+        name: dto.adminName,
+        schoolName: school.name,
+        schoolSlug: school.slug,
+      });
+    }
 
     return SchoolEntity.fromModel(school, dto.adminEmail);
   }

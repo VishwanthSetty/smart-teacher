@@ -5,6 +5,8 @@ import {
   MAX_IMPORT_ROWS,
   MAX_NAME_PART_LENGTH,
   MAX_ROLL_NUMBER_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  MAX_PASSWORD_LENGTH,
   REQUIRED_HEADERS,
 } from './student-import.constants';
 
@@ -23,7 +25,10 @@ export type StudentImportErrorCode =
   | 'DUPLICATE_EXISTING'
   | 'UNKNOWN_GRADE_LEVEL'
   | 'UNKNOWN_SECTION'
-  | 'ROLL_NUMBER_TAKEN';
+  | 'ROLL_NUMBER_TAKEN'
+  | 'PASSWORD_TOO_SHORT'
+  | 'PASSWORD_TOO_LONG'
+  | 'PASSWORD_MATCHES_EMAIL';
 
 export type StudentImportWarningCode = 'EXTRA_COLUMNS';
 
@@ -54,6 +59,7 @@ export interface ParsedStudentRow {
   gradeLevel: string;
   section: string;
   rollNumber: string | null;
+  password: string;
 }
 
 export interface StudentImportWarning {
@@ -192,6 +198,7 @@ export function parseStudentCsv(buffer: Buffer): ParsedStudentFile {
     const gradeLevel = cell(record, 'grade_level');
     const section = cell(record, 'section');
     const rollNumber = cell(record, 'roll_number');
+    const password = cell(record, 'password');
 
     // Every applicable reason is collected, not just the first, so one correction pass
     // fixes the row rather than surfacing its problems one upload at a time.
@@ -221,11 +228,11 @@ export function parseStudentCsv(buffer: Buffer): ParsedStudentFile {
       });
     }
 
-    if (gradeLevel === '') {
+    if (gradeLevel === '' && section !== '') {
       errors.push({ code: 'MISSING_GRADE_LEVEL', message: 'Grade level is required.' });
     }
 
-    if (section === '') {
+    if (section === '' && (gradeLevel !== '' || rollNumber !== '')) {
       errors.push({ code: 'MISSING_SECTION', message: 'Section is required.' });
     }
 
@@ -234,6 +241,15 @@ export function parseStudentCsv(buffer: Buffer): ParsedStudentFile {
         code: 'ROLL_NUMBER_TOO_LONG',
         message: `Roll number is ${rollNumber.length} characters; the limit is ${MAX_ROLL_NUMBER_LENGTH}.`,
       });
+    }
+
+    if (password !== '' && password.length < MIN_PASSWORD_LENGTH) {
+      errors.push({ code: 'PASSWORD_TOO_SHORT', message: 'Password must be at least 8 characters.' });
+    } else if (password.length > MAX_PASSWORD_LENGTH) {
+      errors.push({ code: 'PASSWORD_TOO_LONG', message: 'Password must be at most 72 characters.' });
+    }
+    if (password !== '' && email !== '' && password.toLowerCase() === email.toLowerCase()) {
+      errors.push({ code: 'PASSWORD_MATCHES_EMAIL', message: 'Password must be different from the email address.' });
     }
 
     if (email !== '') {
@@ -285,6 +301,7 @@ export function parseStudentCsv(buffer: Buffer): ParsedStudentFile {
       gradeLevel,
       section,
       rollNumber: rollNumber === '' ? null : rollNumber,
+      password,
     });
   }
 

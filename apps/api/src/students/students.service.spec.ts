@@ -1,9 +1,9 @@
-import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma, Role, UserStatus, EnrollmentStatus, RefreshTokenRevokeReason } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
-import { InvitesService } from '../invites/invites.service';
+import { PasswordsService } from '../passwords/passwords.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.interface';
 import { StudentsService } from './students.service';
 import { EnrollmentsService } from './enrollments.service';
@@ -42,8 +42,8 @@ const baseUser = {
   firstName: 'Asha',
   lastName: 'Rao',
   role: Role.STUDENT,
-  status: UserStatus.PENDING,
-  activatedAt: null,
+  status: UserStatus.ACTIVE,
+  activatedAt: new Date(),
   createdAt: new Date('2026-07-01T00:00:00.000Z'),
   schoolId: 'school-1',
 };
@@ -58,8 +58,8 @@ describe('StudentsService', () => {
     enrollment: { update: jest.Mock };
     $transaction: jest.Mock;
   };
-  let mail: { sendUserInvite: jest.Mock };
-  let invites: { mintToken: jest.Mock };
+  let mail: { sendCredentials: jest.Mock };
+  let passwords: { resolve: jest.Mock };
   let enrollments: { enroll: jest.Mock; endActive: jest.Mock; activeGradeLevelIdFor: jest.Mock };
 
   beforeEach(async () => {
@@ -71,14 +71,8 @@ describe('StudentsService', () => {
       enrollment: { update: jest.fn() },
       $transaction: jest.fn((arg) => (typeof arg === 'function' ? arg(prisma) : Promise.all(arg))),
     };
-    mail = { sendUserInvite: jest.fn().mockResolvedValue(undefined) };
-    invites = {
-      mintToken: jest.fn().mockReturnValue({
-        token: 'raw-invite-token',
-        tokenHash: 'hashed-invite-token',
-        expiresAt: new Date('2026-08-01T00:00:00.000Z'),
-      }),
-    };
+    mail = { sendCredentials: jest.fn().mockResolvedValue(undefined) };
+    passwords = { resolve: jest.fn().mockResolvedValue({ password: 'Teal-Fox-7412', passwordHash: 'hash' }) };
     enrollments = { enroll: jest.fn(), endActive: jest.fn(), activeGradeLevelIdFor: jest.fn() };
 
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -86,7 +80,7 @@ describe('StudentsService', () => {
         StudentsService,
         { provide: PrismaService, useValue: prisma },
         { provide: MailService, useValue: mail },
-        { provide: InvitesService, useValue: invites },
+        { provide: PasswordsService, useValue: passwords },
         { provide: EnrollmentsService, useValue: enrollments },
       ],
     }).compile();
@@ -116,7 +110,7 @@ describe('StudentsService', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             role: Role.STUDENT,
-            status: UserStatus.PENDING,
+            status: UserStatus.ACTIVE,
             schoolId: 'school-1',
             firstName: 'Asha',
             lastName: 'Rao',
@@ -131,24 +125,50 @@ describe('StudentsService', () => {
       expect(result).toEqual(
         expect.objectContaining({
           id: 'student-1',
-          status: UserStatus.PENDING,
+          status: UserStatus.ACTIVE,
           enrollment: expect.objectContaining({ sectionId: section1.id, rollNumber: '1' }),
         }),
       );
     });
 
-    it('sends the invite only after the transaction commits', async () => {
+    it('creates a student without an enrollment when no section is supplied', async () => {
+      prisma.school.findUnique.mockResolvedValue(school);
+      prisma.user.create.mockResolvedValue(baseUser);
+
+      const result = await service.create(
+        { firstName: dto.firstName, lastName: dto.lastName, email: dto.email },
+        actor,
+      );
+
+      expect(prisma.section.findUnique).not.toHaveBeenCalled();
+      expect(enrollments.enroll).not.toHaveBeenCalled();
+      expect(result.enrollment).toBeNull();
+    });
+
+    it('rejects a roll number when no section is supplied', async () => {
+      prisma.school.findUnique.mockResolvedValue(school);
+
+      await expect(
+        service.create(
+          { firstName: dto.firstName, lastName: dto.lastName, email: dto.email, rollNumber: '1' },
+          actor,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('sends credentials only after the transaction commits when requested', async () => {
       prisma.school.findUnique.mockResolvedValue(school);
       prisma.section.findUnique.mockResolvedValue(section1);
       prisma.user.create.mockResolvedValue(baseUser);
       enrollments.enroll.mockImplementation(async () => {
-        expect(mail.sendUserInvite).not.toHaveBeenCalled();
+        expect(mail.sendCredentials).not.toHaveBeenCalled();
         return enrollmentFixture();
       });
 
-      await service.create(dto, actor);
+      await service.create({ ...dto, sendCredentialsEmail: true }, actor);
 
-      expect(mail.sendUserInvite).toHaveBeenCalledWith(
+      expect(mail.sendCredentials).toHaveBeenCalledWith(
         expect.objectContaining({ email: dto.email, role: Role.STUDENT, schoolSlug: school.slug }),
       );
     });
@@ -179,7 +199,7 @@ describe('StudentsService', () => {
       );
 
       await expect(service.create(dto, actor)).rejects.toBeInstanceOf(ConflictException);
-      expect(mail.sendUserInvite).not.toHaveBeenCalled();
+      expect(mail.sendCredentials).not.toHaveBeenCalled();
     });
 
     it('maps a duplicate email to a conflict', async () => {
@@ -263,5 +283,16 @@ describe('StudentsService', () => {
 
       await expect(service.update('student-1', { rollNumber: '2' })).rejects.toBeInstanceOf(ConflictException);
     });
+  });
+
+  it('revokes live sessions when an admin resets a password', async () => {
+    prisma.user.findUnique.mockResolvedValue({ role: Role.STUDENT, email: baseUser.email });
+    await service.setPassword(baseUser.id, 'Coral-Otter-4821');
+    expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: baseUser.id, revokedAt: null },
+        data: expect.objectContaining({ revokeReason: RefreshTokenRevokeReason.PASSWORD_RESET }),
+      }),
+    );
   });
 });

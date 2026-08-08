@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Plan, Prisma, SchoolStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -31,7 +31,7 @@ describe('SchoolsService', () => {
     refreshToken: { updateMany: jest.Mock };
     $transaction: jest.Mock;
   };
-  let mail: { sendUserInvite: jest.Mock };
+  let mail: { sendUserInvite: jest.Mock; sendSchoolAdminWelcome: jest.Mock };
   let invites: { mintToken: jest.Mock };
 
   beforeEach(async () => {
@@ -47,7 +47,10 @@ describe('SchoolsService', () => {
       refreshToken: { updateMany: jest.fn() },
       $transaction: jest.fn((arg) => (typeof arg === 'function' ? arg(prisma) : Promise.all(arg))),
     };
-    mail = { sendUserInvite: jest.fn().mockResolvedValue(undefined) };
+    mail = {
+      sendUserInvite: jest.fn().mockResolvedValue(undefined),
+      sendSchoolAdminWelcome: jest.fn().mockResolvedValue(undefined),
+    };
     invites = {
       mintToken: jest.fn().mockReturnValue({
         token: 'raw-invite-token',
@@ -89,6 +92,83 @@ describe('SchoolsService', () => {
     expect(mail.sendUserInvite).toHaveBeenCalledWith(
       expect.objectContaining({ email: 'head@springfield.edu', schoolSlug: 'springfield-high' }),
     );
+    expect(mail.sendSchoolAdminWelcome).not.toHaveBeenCalled();
+  });
+
+  it('creates an ACTIVE admin with a password hash and sends no invite when told not to', async () => {
+    prisma.school.create.mockResolvedValue(baseSchool);
+    prisma.user.create.mockResolvedValue({ id: 'user-1' });
+
+    await service.create({
+      name: baseSchool.name,
+      slug: baseSchool.slug,
+      academicYear: baseSchool.academicYear,
+      adminEmail: 'head@springfield.edu',
+      adminName: 'Head',
+      adminPassword: 'Passw0rd!',
+      sendInvite: false,
+    });
+
+    expect(invites.mintToken).not.toHaveBeenCalled();
+    expect(prisma.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'ACTIVE',
+          passwordHash: expect.any(String),
+          activatedAt: expect.any(Date),
+        }),
+      }),
+    );
+    expect(mail.sendUserInvite).not.toHaveBeenCalled();
+    expect(mail.sendSchoolAdminWelcome).not.toHaveBeenCalled();
+  });
+
+  it('sends a welcome email (not an invite link) when a password is set and sendInvite is true', async () => {
+    prisma.school.create.mockResolvedValue(baseSchool);
+    prisma.user.create.mockResolvedValue({ id: 'user-1' });
+
+    await service.create({
+      name: baseSchool.name,
+      slug: baseSchool.slug,
+      academicYear: baseSchool.academicYear,
+      adminEmail: 'head@springfield.edu',
+      adminName: 'Head',
+      adminPassword: 'Passw0rd!',
+      sendInvite: true,
+    });
+
+    expect(mail.sendUserInvite).not.toHaveBeenCalled();
+    expect(mail.sendSchoolAdminWelcome).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'head@springfield.edu', schoolSlug: 'springfield-high' }),
+    );
+  });
+
+  it('rejects when no password is given and invites are disabled', async () => {
+    await expect(
+      service.create({
+        name: baseSchool.name,
+        slug: baseSchool.slug,
+        academicYear: baseSchool.academicYear,
+        adminEmail: 'head@springfield.edu',
+        adminName: 'Head',
+        sendInvite: false,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.school.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a password that matches the admin email', async () => {
+    await expect(
+      service.create({
+        name: baseSchool.name,
+        slug: baseSchool.slug,
+        academicYear: baseSchool.academicYear,
+        adminEmail: 'head@springfield.edu',
+        adminName: 'Head',
+        adminPassword: 'HEAD@Springfield.edu',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.school.create).not.toHaveBeenCalled();
   });
 
   it('maps a duplicate slug to a ConflictException', async () => {

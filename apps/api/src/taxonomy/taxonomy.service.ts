@@ -84,20 +84,21 @@ export class TaxonomyService {
       throw new NotFoundException('Grade level not found');
     }
 
+    // The curriculum count subsumes what used to be separate video and entitlement
+    // counts: both now reach a grade level only through Curriculum, so a grade level with
+    // no curriculum has neither.
+    //
     // Same root-at-the-referencing-model reasoning as updateSubject's retiring check
-    // above: SchoolContentEntitlement and Section are tenant-scoped, so counting them
-    // from a GradeLevel relation would route through the tenant guard's relation walker
-    // and either throw MissingTenantContextError (SUPER_ADMIN has no schoolId) or answer
-    // "in this one tenant" — the wrong question for a platform-wide check.
-    const [videoCount, entitlementCount, sectionCount] = await this.prisma.$transaction([
-      this.prisma.video.count({ where: { gradeLevelId: id } }),
-      this.prisma.schoolContentEntitlement.count({ where: { gradeLevelId: id } }),
+    // below: Section is tenant-scoped, so counting it from a GradeLevel relation would
+    // route through the tenant guard's relation walker and either throw
+    // MissingTenantContextError (SUPER_ADMIN has no schoolId) or answer "in this one
+    // tenant" — the wrong question for a platform-wide check.
+    const [curriculumCount, sectionCount] = await this.prisma.$transaction([
+      this.prisma.curriculum.count({ where: { gradeLevelId: id } }),
       this.prisma.section.count({ where: { gradeLevelId: id } }),
     ]);
-    if (videoCount > 0 || entitlementCount > 0 || sectionCount > 0) {
-      throw new ConflictException(
-        'This grade level is still used by platform videos, school entitlements or sections',
-      );
+    if (curriculumCount > 0 || sectionCount > 0) {
+      throw new ConflictException('This grade level is still used by curricula or sections');
     }
 
     await this.prisma.gradeLevel.delete({ where: { id } });
@@ -146,22 +147,23 @@ export class TaxonomyService {
       dto.status === SubjectStatus.RETIRED && subject.status !== SubjectStatus.RETIRED;
     if (isRetiring) {
       // The FKs are onDelete: Restrict, which stops a delete but not a status change —
-      // retiring a referenced subject would strand live videos and school grants behind
-      // a subject nothing can reach. Timetable slots join this list when F-08 lands.
+      // retiring a referenced subject would strand live curricula and school grants
+      // behind a subject nothing can reach. Timetable slots join this list when F-08
+      // lands. The curriculum count subsumes videos and entitlements: both reach a
+      // subject only through Curriculum now.
       //
-      // All three counts are rooted at the referencing model on purpose. Asking
-      // `subject.count({ where: { entitlements: { some: {} } } })` instead would route
-      // through the tenant guard's relation walker, which either throws
-      // MissingTenantContextError (SUPER_ADMIN has no schoolId) or answers "entitlements
+      // Both counts are rooted at the referencing model on purpose. Asking
+      // `subject.count({ where: { teacherAssignments: { some: {} } } })` instead would
+      // route through the tenant guard's relation walker, which either throws
+      // MissingTenantContextError (SUPER_ADMIN has no schoolId) or answers "assignments
       // in this one tenant" — the wrong question for a platform-wide check.
-      const [videoCount, entitlementCount, assignmentCount] = await this.prisma.$transaction([
-        this.prisma.video.count({ where: { subjectId: id } }),
-        this.prisma.schoolContentEntitlement.count({ where: { subjectId: id } }),
+      const [curriculumCount, assignmentCount] = await this.prisma.$transaction([
+        this.prisma.curriculum.count({ where: { subjectId: id } }),
         this.prisma.teacherAssignment.count({ where: { subjectId: id } }),
       ]);
-      if (videoCount > 0 || entitlementCount > 0 || assignmentCount > 0) {
+      if (curriculumCount > 0 || assignmentCount > 0) {
         throw new ConflictException(
-          'This subject is still used by platform videos, school entitlements or teacher assignments',
+          'This subject is still used by curricula or teacher assignments',
         );
       }
     }

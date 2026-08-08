@@ -2,20 +2,12 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { GradeLevel, Subject } from '@smart-teacher/shared-types';
+import type { GradeLevel } from '@smart-teacher/shared-types';
 
-export function GrantEntitlementForm({
-  schoolId,
-  gradeLevels,
-  subjects,
-}: {
-  schoolId: string;
-  gradeLevels: GradeLevel[];
-  subjects: Subject[];
-}) {
+export function CreateSectionForm({ gradeLevels }: { gradeLevels: GradeLevel[] }) {
   const router = useRouter();
   const [gradeLevelId, setGradeLevelId] = useState('');
-  const [subjectId, setSubjectId] = useState('');
+  const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -24,41 +16,39 @@ export function GrantEntitlementForm({
     setError(null);
     setIsSubmitting(true);
 
-    const response = await fetch(`/api/schools/${schoolId}/entitlements`, {
+    const response = await fetch('/api/sections', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gradeLevelId, subjectId }),
+      body: JSON.stringify({ gradeLevelId, name }),
     });
 
     setIsSubmitting(false);
 
     if (!response.ok) {
-      // The API's 409 text ("already holds an entitlement", "subject is retired") is the
-      // most useful thing to show, so it is surfaced unchanged rather than flattened.
-      const body = await response.json().catch(() => ({ message: 'Failed to grant access' }));
-      setError(body.message ?? 'Failed to grant access');
+      const body = await response.json().catch(() => ({ message: 'Failed to create section' }));
+      setError(body.message ?? 'Failed to create section');
       return;
     }
 
     setGradeLevelId('');
-    setSubjectId('');
+    setName('');
     router.refresh();
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-      <h2 className="text-lg font-medium">Grant access</h2>
+      <h2 className="text-lg font-medium">Create a section</h2>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1">
-          <label htmlFor="entitlementGradeLevel" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="gradeLevelId" className="block text-sm font-medium text-gray-700">
             Grade level
           </label>
           <select
-            id="entitlementGradeLevel"
+            id="gradeLevelId"
             required
             value={gradeLevelId}
-            onChange={(e) => setGradeLevelId(e.target.value)}
+            onChange={(event) => setGradeLevelId(event.target.value)}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
           >
             <option value="" disabled>
@@ -73,25 +63,18 @@ export function GrantEntitlementForm({
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="entitlementSubject" className="block text-sm font-medium text-gray-700">
-            Subject
+          <label htmlFor="sectionName" className="block text-sm font-medium text-gray-700">
+            Section name
           </label>
-          <select
-            id="entitlementSubject"
+          <input
+            id="sectionName"
+            type="text"
             required
-            value={subjectId}
-            onChange={(e) => setSubjectId(e.target.value)}
+            placeholder="A"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
-          >
-            <option value="" disabled>
-              Select a subject
-            </option>
-            {subjects.map((subject) => (
-              <option key={subject.id} value={subject.id}>
-                {subject.name}
-              </option>
-            ))}
-          </select>
+          />
         </div>
       </div>
 
@@ -100,9 +83,9 @@ export function GrantEntitlementForm({
       <button
         type="submit"
         disabled={isSubmitting}
-        className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+        className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100 disabled:opacity-50"
       >
-        {isSubmitting ? 'Granting…' : 'Grant access'}
+        {isSubmitting ? 'Creating…' : 'Create section'}
       </button>
     </form>
   );

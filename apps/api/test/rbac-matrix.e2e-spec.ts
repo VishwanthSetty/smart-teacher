@@ -77,7 +77,7 @@ type Access = 'public' | 'worker' | 'playback-token' | { allow: Role[] };
 
 interface MatrixRow {
   key: string;
-  request: { method: 'get' | 'post' | 'patch' | 'delete'; path: string; body?: Record<string, unknown> };
+  request: { method: 'get' | 'post' | 'put' | 'patch' | 'delete'; path: string; body?: Record<string, unknown> };
   access: Access;
 }
 
@@ -148,6 +148,16 @@ const MATRIX: MatrixRow[] = [
   {
     key: 'POST /teachers',
     request: { method: 'post', path: '/teachers', body: {} },
+    access: { allow: [Role.SCHOOL_ADMIN] },
+  },
+  {
+    key: 'GET /teachers/:id/password',
+    request: { method: 'get', path: `/teachers/${MISSING_ID}/password` },
+    access: { allow: [Role.SCHOOL_ADMIN] },
+  },
+  {
+    key: 'POST /teachers/:id/password',
+    request: { method: 'post', path: `/teachers/${MISSING_ID}/password`, body: {} },
     access: { allow: [Role.SCHOOL_ADMIN] },
   },
   {
@@ -250,6 +260,122 @@ const MATRIX: MatrixRow[] = [
     access: { allow: ALL_ROLES },
   },
 
+  // Curriculum structure — the configurable hierarchy below the grade/subject spine.
+  // Authoring is SUPER_ADMIN only, exactly like the taxonomy it keys off.
+  //
+  // The schema and content-node controllers touch only platform-global models, so they
+  // carry no @BypassTenantScope. CurriculaAdminController does carry it: its detail read
+  // reports the entitled-school count and its delete guard refuses while any grant
+  // exists, and SchoolContentEntitlement is tenant-scoped while SUPER_ADMIN has no
+  // schoolId. A 500 on a /admin/curricula route means that bypass went missing.
+  {
+    key: 'GET /admin/curriculum-schemas',
+    request: { method: 'get', path: '/admin/curriculum-schemas' },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+  {
+    key: 'GET /admin/curriculum-schemas/:id',
+    request: { method: 'get', path: `/admin/curriculum-schemas/${MISSING_ID}` },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+  {
+    key: 'POST /admin/curriculum-schemas',
+    request: { method: 'post', path: '/admin/curriculum-schemas', body: {} },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+  {
+    key: 'POST /admin/curriculum-schemas/:id/clone',
+    request: { method: 'post', path: `/admin/curriculum-schemas/${MISSING_ID}/clone`, body: {} },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+  {
+    key: 'PATCH /admin/curriculum-schemas/:id',
+    request: { method: 'patch', path: `/admin/curriculum-schemas/${MISSING_ID}`, body: {} },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+  {
+    key: 'DELETE /admin/curriculum-schemas/:id',
+    request: { method: 'delete', path: `/admin/curriculum-schemas/${MISSING_ID}` },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+  {
+    key: 'GET /admin/curricula',
+    request: { method: 'get', path: '/admin/curricula' },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+  {
+    key: 'GET /admin/curricula/:id',
+    request: { method: 'get', path: `/admin/curricula/${MISSING_ID}` },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+  {
+    key: 'GET /admin/curricula/:id/tree',
+    request: { method: 'get', path: `/admin/curricula/${MISSING_ID}/tree` },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+  {
+    key: 'POST /admin/curricula',
+    request: { method: 'post', path: '/admin/curricula', body: {} },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+  {
+    key: 'PATCH /admin/curricula/:id',
+    request: { method: 'patch', path: `/admin/curricula/${MISSING_ID}`, body: {} },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+  // Publish and unpublish change what every entitled school can see, so they are
+  // explicit routes rather than a status field on the PATCH body.
+  {
+    key: 'POST /admin/curricula/:id/publish',
+    request: { method: 'post', path: `/admin/curricula/${MISSING_ID}/publish`, body: {} },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+  {
+    key: 'POST /admin/curricula/:id/unpublish',
+    request: { method: 'post', path: `/admin/curricula/${MISSING_ID}/unpublish`, body: {} },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+  // A 500 here would mean the entitlement and video pre-checks reached a tenant-scoped
+  // model from a Curriculum root rather than being rooted at the referencing model.
+  {
+    key: 'DELETE /admin/curricula/:id',
+    request: { method: 'delete', path: `/admin/curricula/${MISSING_ID}` },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+  {
+    key: 'POST /admin/curricula/:id/nodes',
+    request: { method: 'post', path: `/admin/curricula/${MISSING_ID}/nodes`, body: {} },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+  {
+    key: 'PATCH /admin/content-nodes/:id',
+    request: { method: 'patch', path: `/admin/content-nodes/${MISSING_ID}`, body: {} },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+  {
+    key: 'POST /admin/content-nodes/:id/move',
+    request: { method: 'post', path: `/admin/content-nodes/${MISSING_ID}/move`, body: {} },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+  {
+    key: 'DELETE /admin/content-nodes/:id',
+    request: { method: 'delete', path: `/admin/content-nodes/${MISSING_ID}` },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+
+  // The school-facing library structure. Same role set as /videos: browsing entitled
+  // content is a SCHOOL_ADMIN, TEACHER and STUDENT capability.
+  {
+    key: 'GET /curricula',
+    request: { method: 'get', path: '/curricula' },
+    access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] },
+  },
+  {
+    key: 'GET /curricula/:id/tree',
+    request: { method: 'get', path: `/curricula/${MISSING_ID}/tree` },
+    access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] },
+  },
+
   // Student onboarding (F-08 first slice) — tenant-scoped SCHOOL_ADMIN work, with
   // read access also granted to TEACHER.
   {
@@ -293,6 +419,16 @@ const MATRIX: MatrixRow[] = [
   {
     key: 'PATCH /students/:id',
     request: { method: 'patch', path: `/students/${MISSING_ID}`, body: {} },
+    access: { allow: [Role.SCHOOL_ADMIN] },
+  },
+  {
+    key: 'GET /students/:id/password',
+    request: { method: 'get', path: `/students/${MISSING_ID}/password` },
+    access: { allow: [Role.SCHOOL_ADMIN] },
+  },
+  {
+    key: 'POST /students/:id/password',
+    request: { method: 'post', path: `/students/${MISSING_ID}/password`, body: {} },
     access: { allow: [Role.SCHOOL_ADMIN] },
   },
   {
@@ -362,7 +498,7 @@ const MATRIX: MatrixRow[] = [
   },
   {
     key: 'GET /admin/content-impact',
-    request: { method: 'get', path: '/admin/content-impact?gradeLevelId=x&subjectId=y' },
+    request: { method: 'get', path: '/admin/content-impact?curriculumId=x' },
     access: { allow: [Role.SUPER_ADMIN] },
   },
   {
@@ -394,27 +530,32 @@ const MATRIX: MatrixRow[] = [
     access: { allow: [Role.SUPER_ADMIN] },
   },
   {
+    key: 'PUT /admin/schools/:schoolId/entitlements',
+    request: { method: 'put', path: `/admin/schools/${MISSING_ID}/entitlements`, body: { curriculumIds: [] } },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+  {
     key: 'DELETE /admin/schools/:schoolId/entitlements/:id',
     request: { method: 'delete', path: `/admin/schools/${MISSING_ID}/entitlements/${MISSING_ID}` },
     access: { allow: [Role.SUPER_ADMIN] },
   },
 
-  // The school-facing library. Per the F-06 capability table, "watch entitled videos"
-  // is a TEACHER/STUDENT capability — SCHOOL_ADMIN and SUPER_ADMIN are not granted it.
+  // The school-facing library admits tenant admins to the same entitled read/watch
+  // surface as teachers and students. SUPER_ADMIN uses the platform authoring surface.
   {
     key: 'GET /videos',
     request: { method: 'get', path: '/videos' },
-    access: { allow: [Role.TEACHER, Role.STUDENT] },
+    access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] },
   },
   {
     key: 'GET /videos/:id',
     request: { method: 'get', path: `/videos/${MISSING_ID}` },
-    access: { allow: [Role.TEACHER, Role.STUDENT] },
+    access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] },
   },
   {
-    key: 'POST /videos/:id/playback',
-    request: { method: 'post', path: `/videos/${MISSING_ID}/playback` },
-    access: { allow: [Role.SUPER_ADMIN, Role.TEACHER, Role.STUDENT] },
+    key: 'GET /videos/:id/playback-token',
+    request: { method: 'get', path: `/videos/${MISSING_ID}/playback-token` },
+    access: { allow: [Role.SUPER_ADMIN, Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] },
   },
   { key: 'GET /videos/:id/hls/master.m3u8', request: { method: 'get', path: `/videos/${MISSING_ID}/hls/master.m3u8` }, access: 'playback-token' },
   { key: 'GET /videos/:id/hls/:rendition/playlist.m3u8', request: { method: 'get', path: `/videos/${MISSING_ID}/hls/360p/playlist.m3u8` }, access: 'playback-token' },
@@ -422,10 +563,9 @@ const MATRIX: MatrixRow[] = [
   { key: 'GET /videos/:id/poster.jpg', request: { method: 'get', path: `/videos/${MISSING_ID}/poster.jpg` }, access: 'playback-token' },
 ];
 
-// F-06 acceptance criterion: "School Admins receive 403 on all video-content and
-// entitlement endpoints (those are Super Admin only)."
-const CONTENT_AND_ENTITLEMENT_PATHS = [
-  '/videos',
+// Tenant admins may consume licensed content, but platform authoring and cross-tenant
+// entitlement management remain SUPER_ADMIN-only.
+const CONTENT_AUTHORING_AND_ENTITLEMENT_PATHS = [
   '/admin/videos',
   '/admin/grade-levels',
   '/admin/subjects',
@@ -505,13 +645,13 @@ describe('RBAC matrix (e2e)', () => {
   // the table is equivalent to asserting against the app — and the per-row HTTP tests
   // below independently confirm the 403.
   describe('acceptance criteria', () => {
-    it('denies SCHOOL_ADMIN every video-content and entitlement endpoint', () => {
+    it('denies SCHOOL_ADMIN every content-authoring and entitlement endpoint', () => {
       const contentRows = gatedRows.filter((row) =>
-        CONTENT_AND_ENTITLEMENT_PATHS.some((path) => pathOf(row.key).includes(path)),
+        CONTENT_AUTHORING_AND_ENTITLEMENT_PATHS.some((path) => pathOf(row.key).includes(path)),
       );
 
       // Guards against the filter silently matching nothing and passing vacuously.
-      expect(contentRows.length).toBeGreaterThanOrEqual(15);
+      expect(contentRows.length).toBeGreaterThanOrEqual(19);
       expect(
         contentRows.filter((row) => row.access.allow.includes(Role.SCHOOL_ADMIN)).map((r) => r.key),
       ).toEqual([]);

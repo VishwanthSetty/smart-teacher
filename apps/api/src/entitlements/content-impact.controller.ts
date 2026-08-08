@@ -17,7 +17,8 @@ export class ContentImpactController {
 
   @Get()
   @ApiResponse({ status: 200, type: ContentImpactEntity })
+  @ApiResponse({ status: 404, description: 'Curriculum not found.' })
   get(@Query() query: ContentImpactQueryDto): Promise<ContentImpactEntity> {
-    return this.contentImpact.get(query.gradeLevelId, query.subjectId);
+    return this.contentImpact.get(query.curriculumId);
   }
 }

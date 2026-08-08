@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, SubjectStatus, VideoStatus } from '@prisma/client';
+import { CurriculumStatus, Prisma, SubjectStatus, VideoStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActorContentScopeService } from '../entitlements/actor-content-scope.service';
 import { actorScopeOf, requireReadable } from '../common/authorization/resource-access';
@@ -25,13 +25,24 @@ import { PaginatedAdminVideosEntity } from './entities/paginated-admin-videos.en
 import { VideoUploadTicketEntity } from './entities/video-upload-ticket.entity';
 import { isAcceptedVideoContentType, MAX_VIDEO_BYTES } from './video-ingest.constants';
 
+// The node join is what supplies the entitlement key now that a video carries no grade
+// level or subject of its own. It is a to-one chain between platform-global models
+// (Video -> ContentNode -> Curriculum), so it never enters the tenant guard's walker.
+const NODE_SELECT = {
+  select: {
+    title: true,
+    curriculumId: true,
+    curriculum: { select: { gradeLevelId: true, subjectId: true } },
+  },
+} as const;
+
 const VIDEO_SELECT = {
   id: true,
   title: true,
   description: true,
   durationSecs: true,
-  gradeLevelId: true,
-  subjectId: true,
+  contentNodeId: true,
+  node: NODE_SELECT,
 } as const;
 
 const ADMIN_VIDEO_SELECT = {
@@ -46,11 +57,41 @@ const ADMIN_VIDEO_SELECT = {
   failureReason: true,
 } as const;
 
+type VideoRow = Prisma.VideoGetPayload<{ select: typeof VIDEO_SELECT }>;
+type AdminVideoRow = Prisma.VideoGetPayload<{ select: typeof ADMIN_VIDEO_SELECT }>;
+
+// Flattens the node join into the response shape. Callers never see the nested Prisma
+// row — the entities are an explicit contract, so a new column on ContentNode or
+// Curriculum cannot leak through a spread.
+function toVideoEntity(row: VideoRow): VideoEntity {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    durationSecs: row.durationSecs,
+    contentNodeId: row.contentNodeId,
+    contentNodeTitle: row.node.title,
+    curriculumId: row.node.curriculumId,
+    gradeLevelId: row.node.curriculum.gradeLevelId,
+    subjectId: row.node.curriculum.subjectId,
+  };
+}
+
+function toAdminVideoEntity(row: AdminVideoRow): AdminVideoEntity {
+  return {
+    ...toVideoEntity(row),
+    status: row.status,
+    sizeBytes: row.sizeBytes,
+    contentType: row.contentType,
+    failureReason: row.failureReason,
+    createdAt: row.createdAt,
+  };
+}
+
 export interface PlayableVideo {
   id: string;
   durationSecs: number | null;
-  gradeLevelId: string;
-  subjectId: string;
+  curriculumId: string;
   playlistKey: string;
   posterKey: string | null;
 }
@@ -79,12 +120,12 @@ export class VideosService {
   // indistinguishable from one that doesn't exist. The status filter is part of the
   // same fetch so an in-flight upload reads as a 404 rather than a filtered-out 200.
   async findOneVisibleTo(id: string, actor: AuthenticatedUser): Promise<VideoEntity> {
-    const video = await this.prisma.video.findFirst({
+    const row = await this.prisma.video.findFirst({
       where: { id, status: VideoStatus.READY },
       select: VIDEO_SELECT,
     });
     return requireReadable<VideoEntity>(
-      video,
+      row === null ? null : toVideoEntity(row),
       actorScopeOf(actor),
       this.videosAccessPolicy,
       'Video not found',
@@ -92,19 +133,28 @@ export class VideosService {
   }
 
   async findPlayableVisibleTo(id: string, actor: AuthenticatedUser): Promise<PlayableVideo> {
-    const video = await this.prisma.video.findFirst({
+    const row = await this.prisma.video.findFirst({
       where: { id, status: VideoStatus.READY },
       select: {
         id: true,
         durationSecs: true,
-        gradeLevelId: true,
-        subjectId: true,
         playlistKey: true,
         posterKey: true,
+        node: { select: { curriculumId: true } },
       },
     });
-    const readable = await requireReadable<NonNullable<typeof video>>(
-      video,
+    const playable =
+      row === null
+        ? null
+        : {
+            id: row.id,
+            durationSecs: row.durationSecs,
+            curriculumId: row.node.curriculumId,
+            playlistKey: row.playlistKey,
+            posterKey: row.posterKey,
+          };
+    const readable = await requireReadable<NonNullable<typeof playable>>(
+      playable,
       actorScopeOf(actor),
       this.videosAccessPolicy,
       'Video not found',
@@ -115,31 +165,37 @@ export class VideosService {
     return { ...readable, playlistKey: readable.playlistKey };
   }
 
+  // The PUBLISHED narrowing is deliberately absent from this `where`: the scope returned
+  // by ActorContentScopeService already excludes unpublished curricula, and adding a
+  // second filter here would hide draft content from the 'all' branch — which is exactly
+  // the preview a SUPER_ADMIN needs before publishing. One seam, one answer.
   async findAllVisibleTo(actor: AuthenticatedUser): Promise<VideoEntity[]> {
     const scope = await this.contentScope.resolve(actorScopeOf(actor));
 
     if (scope === 'all') {
-      return this.prisma.video.findMany({
+      const rows = await this.prisma.video.findMany({
         where: { status: VideoStatus.READY },
         select: VIDEO_SELECT,
         orderBy: { title: 'asc' },
       });
+      return rows.map(toVideoEntity);
     }
 
-    // An empty scope must not fall through to an empty `OR`, which Prisma treats as no
-    // filter at all and would return the whole library.
+    // An empty scope must not fall through to an empty `in`, so the early return stays
+    // even though Prisma handles `in: []` correctly — it states the intent.
     if (scope.length === 0) {
       return [];
     }
 
-    return this.prisma.video.findMany({
+    const rows = await this.prisma.video.findMany({
       where: {
         status: VideoStatus.READY,
-        OR: scope.map(({ gradeLevelId, subjectId }) => ({ gradeLevelId, subjectId })),
+        node: { curriculumId: { in: scope } },
       },
       select: VIDEO_SELECT,
       orderBy: { title: 'asc' },
     });
+    return rows.map(toVideoEntity);
   }
 
   // The management view: every status, no entitlement scoping. SUPER_ADMIN resolves to
@@ -154,10 +210,20 @@ export class VideosService {
     await this.reconciler.sweepStale();
 
     const search = query.search?.trim();
-    const where: Prisma.VideoWhereInput = {
-      ...(query.status ? { status: query.status } : {}),
+    // Grade level and subject are no longer columns on Video — they resolve through the
+    // node's curriculum, so those filters become one nested condition.
+    const curriculumFilter: Prisma.CurriculumWhereInput = {
       ...(query.gradeLevelId ? { gradeLevelId: query.gradeLevelId } : {}),
       ...(query.subjectId ? { subjectId: query.subjectId } : {}),
+      ...(query.curriculumId ? { id: query.curriculumId } : {}),
+    };
+    const nodeFilter: Prisma.ContentNodeWhereInput = {
+      ...(query.contentNodeId ? { id: query.contentNodeId } : {}),
+      ...(Object.keys(curriculumFilter).length > 0 ? { curriculum: curriculumFilter } : {}),
+    };
+    const where: Prisma.VideoWhereInput = {
+      ...(query.status ? { status: query.status } : {}),
+      ...(Object.keys(nodeFilter).length > 0 ? { node: nodeFilter } : {}),
       ...(search ? { title: { contains: search, mode: 'insensitive' } } : {}),
     };
     const [data, total] = await this.prisma.$transaction([
@@ -171,7 +237,7 @@ export class VideosService {
       this.prisma.video.count({ where }),
     ]);
     return {
-      data,
+      data: data.map(toAdminVideoEntity),
       meta: {
         page: query.page,
         limit: query.limit,
@@ -209,14 +275,24 @@ export class VideosService {
     if (video === null) {
       throw new NotFoundException('Video not found');
     }
-    return video;
+    return {
+      ...toAdminVideoEntity(video),
+      updatedAt: video.updatedAt,
+      transcodeAttempts: video.transcodeAttempts,
+      transcodeStartedAt: video.transcodeStartedAt,
+      retainSource: video.retainSource,
+      sourceKey: video.sourceKey,
+      playlistKey: video.playlistKey,
+      posterKey: video.posterKey,
+      renditions: video.renditions,
+    };
   }
 
   // SUPER_ADMIN only (see VideosAdminController). Videos are platform content, so there
   // is no tenant to stamp — but the taxonomy FKs are caller-supplied and must be proven
   // to exist, or Prisma's raw foreign-key violation would surface as a 500.
   async create(dto: CreateVideoDto): Promise<VideoUploadTicketEntity> {
-    await this.assertTaxonomyUsable(dto.gradeLevelId, dto.subjectId);
+    await this.assertNodeUsable(dto.contentNodeId);
 
     // The object key derives from the generated id, so the row must exist before the
     // key does. Both writes go in one transaction: a row stranded without a sourceKey
@@ -227,8 +303,7 @@ export class VideosService {
           title: dto.title,
           description: dto.description,
           durationSecs: dto.durationSecs,
-          gradeLevelId: dto.gradeLevelId,
-          subjectId: dto.subjectId,
+          contentNodeId: dto.contentNodeId,
           status: VideoStatus.UPLOADING,
         } satisfies Prisma.VideoUncheckedCreateInput,
         select: { id: true },
@@ -243,29 +318,28 @@ export class VideosService {
 
     // Presigned only after the transaction commits: a URL handed out for a row that
     // then rolled back would authorise writes to an object nothing owns.
-    return this.issueUploadTicket(video, sourceKeyFor(video.id), dto.contentType);
+    return this.issueUploadTicket(toAdminVideoEntity(video), sourceKeyFor(video.id), dto.contentType);
   }
 
   async update(id: string, dto: UpdateVideoDto): Promise<AdminVideoDetailEntity> {
     const current = await this.prisma.video.findUnique({
       where: { id },
-      select: { gradeLevelId: true, subjectId: true },
+      select: { contentNodeId: true },
     });
     if (current === null) {
       throw new NotFoundException('Video not found');
     }
-    const gradeLevelId = dto.gradeLevelId ?? current.gradeLevelId;
-    const subjectId = dto.subjectId ?? current.subjectId;
-    if (gradeLevelId !== current.gradeLevelId || subjectId !== current.subjectId) {
-      await this.assertTaxonomyUsable(gradeLevelId, subjectId);
+    // Re-filing can move a video into a different curriculum, which changes which schools
+    // see it — so the destination is validated exactly as it was at create time.
+    if (dto.contentNodeId !== undefined && dto.contentNodeId !== current.contentNodeId) {
+      await this.assertNodeUsable(dto.contentNodeId);
     }
     await this.prisma.video.update({
       where: { id },
       data: {
         title: dto.title,
         description: dto.description,
-        gradeLevelId: dto.gradeLevelId,
-        subjectId: dto.subjectId,
+        contentNodeId: dto.contentNodeId,
         retainSource: dto.retainSource,
       },
     });
@@ -301,7 +375,7 @@ export class VideosService {
       select: ADMIN_VIDEO_SELECT,
     });
 
-    return this.issueUploadTicket(video, row.sourceKey, dto.contentType);
+    return this.issueUploadTicket(toAdminVideoEntity(video), row.sourceKey, dto.contentType);
   }
 
   /**
@@ -363,7 +437,8 @@ export class VideosService {
 
     // Split off rather than returned: the attempt is the queue's fencing token, and the
     // admin entity has no business carrying it.
-    const { transcodeAttempts, ...entity } = queued;
+    const { transcodeAttempts, ...row } = queued;
+    const entity = toAdminVideoEntity(row);
 
     // After the commit: a job for a video that rolled back would point at nothing. The
     // reverse risk (committed but never enqueued) is recoverable — the row sits in
@@ -419,7 +494,8 @@ export class VideosService {
       this.prisma.videoRendition.deleteMany({ where: { videoId: video.id } }),
     ]);
 
-    const { transcodeAttempts, ...entity } = requeued;
+    const { transcodeAttempts, ...row } = requeued;
+    const entity = toAdminVideoEntity(row);
 
     await this.enqueueTranscode(video.id, video.sourceKey, transcodeAttempts);
 
@@ -473,19 +549,41 @@ export class VideosService {
     return { video, uploadUrl: upload.url, expiresInSecs: upload.expiresInSecs };
   }
 
-  private async assertTaxonomyUsable(gradeLevelId: string, subjectId: string): Promise<void> {
-    const [gradeLevel, subject] = await this.prisma.$transaction([
-      this.prisma.gradeLevel.count({ where: { id: gradeLevelId } }),
-      this.prisma.subject.findUnique({ where: { id: subjectId }, select: { status: true } }),
-    ]);
-    if (gradeLevel === 0) {
-      throw new NotFoundException('Grade level not found');
+  /**
+   * Proves the destination node can actually hold this video.
+   *
+   * The caller supplies the node id, so it must be shown to exist or Prisma's raw
+   * foreign-key violation would surface as a 500. Beyond existence there are three rules,
+   * all enforced here rather than left to the UI: the node's level must be marked
+   * content-holding (videos hang off topics, not chapters), the curriculum must not be
+   * archived, and its subject must not be retired.
+   */
+  private async assertNodeUsable(contentNodeId: string): Promise<void> {
+    const node = await this.prisma.contentNode.findUnique({
+      where: { id: contentNodeId },
+      select: {
+        depth: true,
+        curriculum: {
+          select: {
+            status: true,
+            subject: { select: { status: true } },
+            schema: { select: { levels: { select: { depth: true, canHoldContent: true } } } },
+          },
+        },
+      },
+    });
+    if (node === null) {
+      throw new NotFoundException('Content node not found');
     }
-    if (subject === null) {
-      throw new NotFoundException('Subject not found');
-    }
-    if (subject.status === SubjectStatus.RETIRED) {
+    if (node.curriculum.subject.status === SubjectStatus.RETIRED) {
       throw new ConflictException('This subject is retired and cannot take new content');
+    }
+    if (node.curriculum.status === CurriculumStatus.ARCHIVED) {
+      throw new ConflictException('This curriculum is archived and cannot take new content');
+    }
+    const level = node.curriculum.schema.levels.find((candidate) => candidate.depth === node.depth);
+    if (level === undefined || !level.canHoldContent) {
+      throw new ConflictException('Videos cannot be attached at this level of the curriculum');
     }
   }
 

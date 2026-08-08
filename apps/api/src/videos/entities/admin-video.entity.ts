@@ -32,6 +32,16 @@ export class AdminVideoEntity {
   contentType!: string | null;
 
   @ApiProperty()
+  contentNodeId!: string;
+
+  @ApiProperty()
+  contentNodeTitle!: string;
+
+  @ApiProperty()
+  curriculumId!: string;
+
+  // Denormalized off the node's curriculum for display in the admin library grid.
+  @ApiProperty()
   gradeLevelId!: string;
 
   @ApiProperty()

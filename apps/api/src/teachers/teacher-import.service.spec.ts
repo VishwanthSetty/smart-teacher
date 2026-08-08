@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Role, SubjectStatus, TeacherImportBatchStatus, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
-import { InvitesService } from '../invites/invites.service';
+import { PasswordsService } from '../passwords/passwords.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.interface';
 import { TeacherImportService } from './teacher-import.service';
 
@@ -42,8 +42,8 @@ describe('TeacherImportService', () => {
     };
     $transaction: jest.Mock;
   };
-  let mailService: { sendUserInvite: jest.Mock; sendPasswordReset: jest.Mock };
-  let invitesService: { mintToken: jest.Mock };
+  let mailService: { sendCredentials: jest.Mock };
+  let passwordsService: { resolve: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -61,19 +61,8 @@ describe('TeacherImportService', () => {
       $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(prisma)),
     };
 
-    mailService = { sendUserInvite: jest.fn().mockResolvedValue(undefined), sendPasswordReset: jest.fn() };
-
-    let tokenSeq = 0;
-    invitesService = {
-      mintToken: jest.fn(() => {
-        tokenSeq += 1;
-        return {
-          token: `token-${tokenSeq}`,
-          tokenHash: `hash-${tokenSeq}`,
-          expiresAt: new Date('2030-01-01'),
-        };
-      }),
-    };
+    mailService = { sendCredentials: jest.fn().mockResolvedValue(undefined) };
+    passwordsService = { resolve: jest.fn().mockResolvedValue({ password: 'Teal-Fox-7412', passwordHash: 'hash' }) };
 
     // The batch row the service reads back is whatever it just wrote.
     prisma.teacherImportBatch.create.mockImplementation(({ data }: { data: Record<string, unknown> }) =>
@@ -96,7 +85,7 @@ describe('TeacherImportService', () => {
         TeacherImportService,
         { provide: PrismaService, useValue: prisma },
         { provide: MailService, useValue: mailService },
-        { provide: InvitesService, useValue: invitesService },
+        { provide: PasswordsService, useValue: passwordsService },
       ],
     }).compile();
 
@@ -104,6 +93,15 @@ describe('TeacherImportService', () => {
   });
 
   describe('createBatch', () => {
+    it('never returns the password in the import preview', async () => {
+      const preview = await service.createBatch(
+        upload('email,name,subject_codes,password', 'asha@example.com,Asha Rao,,Teal-Fox-7412'),
+        ACTOR,
+      );
+      expect(preview.validRows[0]).toMatchObject({ hasPassword: true });
+      expect(preview.validRows[0]).not.toHaveProperty('password');
+    });
+
     it('writes only a DRAFT batch — no teacher exists until the admin confirms', async () => {
       const preview = await service.createBatch(upload(HEADER, 'asha@example.com,Asha Rao,'), ACTOR);
 
@@ -195,7 +193,7 @@ describe('TeacherImportService', () => {
       ]);
     });
 
-    it('creates the valid rows as PENDING teachers', async () => {
+    it('creates the valid rows as ACTIVE teachers', async () => {
       prisma.teacherImportBatch.findUnique.mockResolvedValue(draftBatch([ROW]));
 
       const result = await service.confirmBatch('batch-1', ACTOR);
@@ -206,7 +204,7 @@ describe('TeacherImportService', () => {
             expect.objectContaining({
               email: 'asha@example.com',
               role: Role.TEACHER,
-              status: UserStatus.PENDING,
+              status: UserStatus.ACTIVE,
               schoolId: 'school-1',
             }),
           ],
@@ -255,26 +253,26 @@ describe('TeacherImportService', () => {
       expect(prisma.user.createManyAndReturn).not.toHaveBeenCalled();
     });
 
-    it('sends one invite per created teacher', async () => {
+    it('sends one credentials email per created teacher when requested', async () => {
       prisma.teacherImportBatch.findUnique.mockResolvedValue(draftBatch([ROW]));
 
-      const result = await service.confirmBatch('batch-1', ACTOR);
+      const result = await service.confirmBatch('batch-1', ACTOR, true);
 
-      expect(mailService.sendUserInvite).toHaveBeenCalledWith(
+      expect(mailService.sendCredentials).toHaveBeenCalledWith(
         expect.objectContaining({ email: 'asha@example.com', role: Role.TEACHER, schoolName: 'Demo' }),
       );
-      expect(result.invitesSent).toBe(1);
+      expect(result.emailsSent).toBe(1);
     });
 
     it('counts a failed invite without failing the import — the teacher still exists', async () => {
       prisma.teacherImportBatch.findUnique.mockResolvedValue(draftBatch([ROW]));
-      mailService.sendUserInvite.mockRejectedValue(new Error('smtp down'));
+      mailService.sendCredentials.mockRejectedValue(new Error('smtp down'));
 
-      const result = await service.confirmBatch('batch-1', ACTOR);
+      const result = await service.confirmBatch('batch-1', ACTOR, true);
 
       expect(result.createdCount).toBe(1);
-      expect(result.invitesFailed).toBe(1);
-      expect(result.invitesSent).toBe(0);
+      expect(result.emailsFailed).toBe(1);
+      expect(result.emailsSent).toBe(0);
     });
 
     it('rejects a second confirm of the same batch', async () => {
@@ -319,7 +317,7 @@ describe('TeacherImportService', () => {
 
       const csv = await service.buildErrorReport('batch-1');
 
-      expect(csv).toContain('row_number,email,name,subject_codes,errors');
+      expect(csv).toContain('row_number,email,name,subject_codes,password,errors');
       expect(csv).toContain('4,bad@example.com,Bad Row,art');
       expect(csv).toContain('Subject code(s) not in the list: art.');
     });

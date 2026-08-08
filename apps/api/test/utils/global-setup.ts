@@ -1,3 +1,14 @@
+import { resolve } from 'path';
+import { config as loadEnv } from 'dotenv';
+
+// `new PrismaClient()` below loads apps/api/.env itself, on its own, before AppModule's
+// ConfigModule (which points at .env.test under NODE_ENV=test) ever runs — and since
+// dotenv never overrides an already-set var, that dev DATABASE_URL would win and every
+// e2e run would silently write into the docker-compose dev database instead of the
+// isolated test one. Load .env.test explicitly, first, so it's already in process.env by
+// the time Prisma's own lookup happens.
+loadEnv({ path: resolve(__dirname, '../../.env.test'), override: true });
+
 import { PrismaClient, Role, UserStatus } from '@prisma/client';
 import { SEED_PASSWORD } from './login';
 

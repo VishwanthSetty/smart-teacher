@@ -59,6 +59,33 @@ export function StudentRowActions({ student, sections }: { student: Student; sec
     }
   }
 
+  async function viewPassword() {
+    const response = await fetch(`/api/students/${student.id}/password`);
+    const body = await response.json();
+    if (!response.ok) {
+      setError(body.message ?? 'Failed to read password');
+      return;
+    }
+    window.alert(body.password ? `Password: ${body.password}` : 'No admin-readable password is available.');
+  }
+
+  async function resetPassword() {
+    const password = window.prompt('New password (leave blank to generate one):', '');
+    if (password === null || !window.confirm(`Reset ${student.name}'s password and sign them out everywhere?`)) return;
+    const response = await fetch(`/api/students/${student.id}/password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: password || undefined }),
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      setError(body.message ?? 'Failed to reset password');
+      return;
+    }
+    window.alert(`New password: ${body.password}`);
+    router.refresh();
+  }
+
   if (isEditing) {
     return (
       <form onSubmit={handleEditSubmit} className="flex flex-wrap items-center justify-end gap-2">
@@ -118,6 +145,12 @@ export function StudentRowActions({ student, sections }: { student: Student; sec
   return (
     <div className="flex items-center justify-end gap-2">
       {error && <p className="text-sm text-red-600">{error}</p>}
+      <button type="button" onClick={() => void viewPassword()} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100">
+        View password
+      </button>
+      <button type="button" onClick={() => void resetPassword()} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100">
+        Reset password
+      </button>
       <button
         type="button"
         onClick={() => setIsEditing(true)}

@@ -3,9 +3,8 @@ import { redirect } from 'next/navigation';
 import { Role, UserStatus, type Student } from '@smart-teacher/shared-types';
 import { canRoleAccess } from '@/lib/nav';
 import { getAccessToken, requireUser } from '@/lib/session';
-import { apiListGradeLevels, apiListSections, apiListStudents } from '@/lib/api-client';
+import { apiListSections, apiListStudents } from '@/lib/api-client';
 import { PageHeader } from '@/components/ui/page-header';
-import { CreateSectionForm } from './_components/create-section-form';
 import { CreateStudentForm } from './_components/create-student-form';
 import { StudentRowActions } from './_components/student-row-actions';
 import { BulkImportPanel } from './_components/bulk-import-panel';
@@ -14,7 +13,7 @@ const ROUTE = '/dashboard/students';
 const PAGE_SIZE = 20;
 
 const STATUS_LABELS: Record<Student['status'], string> = {
-  PENDING: 'Invite sent',
+  PENDING: 'Pending',
   ACTIVE: 'Active',
   DISABLED: 'Disabled',
 };
@@ -44,11 +43,9 @@ export default async function StudentsPage({
   const status = parseStatus(searchParams.status);
   const page = Math.max(1, Number(searchParams.page) || 1);
 
-  const [{ data: students, meta }, sections, gradeLevels] = await Promise.all([
+  const [{ data: students, meta }, sections] = await Promise.all([
     apiListStudents(accessToken, { page, limit: PAGE_SIZE, search, sectionId, status }),
     apiListSections(accessToken),
-    // Only the admin's create-section form needs the grade-level list.
-    isAdmin ? apiListGradeLevels(accessToken) : Promise.resolve([]),
   ]);
 
   const buildHref = (overrides: {
@@ -80,12 +77,7 @@ export default async function StudentsPage({
         <>
           <BulkImportPanel />
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <div className="lg:col-span-2">
-              <CreateStudentForm sections={sections} />
-            </div>
-            <CreateSectionForm gradeLevels={gradeLevels} />
-          </div>
+          <CreateStudentForm sections={sections} />
         </>
       )}
 
@@ -105,7 +97,7 @@ export default async function StudentsPage({
             href={filterHref(UserStatus.PENDING)}
             className={status === UserStatus.PENDING ? 'font-medium' : 'text-gray-600 hover:text-gray-900'}
           >
-            Invite sent
+            Pending
           </Link>
           <Link
             href={filterHref(UserStatus.DISABLED)}

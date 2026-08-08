@@ -1,15 +1,22 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, SubjectStatus } from '@prisma/client';
+import { CurriculumStatus, Prisma, SubjectStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { GrantEntitlementDto } from './dto/grant-entitlement.dto';
+import { ReplaceEntitlementsDto } from './dto/replace-entitlements.dto';
 import { EntitlementEntity } from './entities/entitlement.entity';
 
 const ENTITLEMENT_SELECT = {
   id: true,
   schoolId: true,
+  curriculumId: true,
   grantedAt: true,
-  gradeLevel: { select: { id: true, name: true } },
-  subject: { select: { id: true, name: true } },
+  curriculum: {
+    select: {
+      status: true,
+      gradeLevel: { select: { id: true, name: true } },
+      subject: { select: { id: true, name: true, status: true } },
+    },
+  },
 } as const;
 
 type EntitlementRow = Prisma.SchoolContentEntitlementGetPayload<{ select: typeof ENTITLEMENT_SELECT }>;
@@ -18,10 +25,12 @@ function toEntity(row: EntitlementRow): EntitlementEntity {
   return {
     id: row.id,
     schoolId: row.schoolId,
-    gradeLevelId: row.gradeLevel.id,
-    gradeLevelName: row.gradeLevel.name,
-    subjectId: row.subject.id,
-    subjectName: row.subject.name,
+    curriculumId: row.curriculumId,
+    gradeLevelId: row.curriculum.gradeLevel.id,
+    gradeLevelName: row.curriculum.gradeLevel.name,
+    subjectId: row.curriculum.subject.id,
+    subjectName: row.curriculum.subject.name,
+    curriculumStatus: row.curriculum.status,
     grantedAt: row.grantedAt,
   };
 }
@@ -54,37 +63,112 @@ export class ContentEntitlementsAdminService {
   async grant(schoolId: string, dto: GrantEntitlementDto): Promise<EntitlementEntity> {
     await this.requireSchool(schoolId);
 
-    const [gradeLevel, subject] = await this.prisma.$transaction([
-      this.prisma.gradeLevel.count({ where: { id: dto.gradeLevelId } }),
-      this.prisma.subject.findUnique({ where: { id: dto.subjectId }, select: { status: true } }),
-    ]);
+    const curriculum = await this.prisma.curriculum.findUnique({
+      where: { id: dto.curriculumId },
+      select: { status: true, subject: { select: { status: true } } },
+    });
 
-    if (gradeLevel === 0) {
-      throw new NotFoundException('Grade level not found');
-    }
-    if (subject === null) {
-      throw new NotFoundException('Subject not found');
+    if (curriculum === null) {
+      throw new NotFoundException('Curriculum not found');
     }
     // 409 rather than 404: the subject exists and this caller can see it in
     // GET /admin/subjects. Retirement stops *new* grants; grants already held stay live.
-    if (subject.status === SubjectStatus.RETIRED) {
+    if (curriculum.subject.status === SubjectStatus.RETIRED) {
       throw new ConflictException('This subject is retired and cannot be granted');
+    }
+    // An ARCHIVED curriculum is retired from new authoring, so it may not take new
+    // grants either — but a DRAFT one may. Granting before publication is legitimate:
+    // ContentEntitlementsService filters reads to PUBLISHED, so nothing leaks, and
+    // requiring publish-before-grant would only create a sequencing trap for operators.
+    if (curriculum.status === CurriculumStatus.ARCHIVED) {
+      throw new ConflictException('This curriculum is archived and cannot be granted');
     }
 
     try {
       const row = await this.prisma.schoolContentEntitlement.create({
-        data: { schoolId, gradeLevelId: dto.gradeLevelId, subjectId: dto.subjectId },
+        data: { schoolId, curriculumId: dto.curriculumId },
         select: ENTITLEMENT_SELECT,
       });
       return toEntity(row);
     } catch (error) {
-      // @@unique([schoolId, gradeLevelId, subjectId]) — re-granting is a conflict, not a
-      // silent no-op, so the caller learns the grant already existed.
+      // @@unique([schoolId, curriculumId]) — re-granting is a conflict, not a silent
+      // no-op, so the caller learns the grant already existed.
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new ConflictException('This school already holds an entitlement for that grade level and subject');
+        throw new ConflictException('This school already holds an entitlement for that curriculum');
       }
       throw error;
     }
+  }
+
+  // Replaces the school's entire entitlement set in one call — the checkbox-matrix save on
+  // the admin UI, so an operator can grant/restrict a whole grade or subject at once instead
+  // of one curriculum per request.
+  async replaceForSchool(schoolId: string, dto: ReplaceEntitlementsDto): Promise<EntitlementEntity[]> {
+    await this.requireSchool(schoolId);
+
+    // The client sends a set, but nothing stops a duplicate id arriving on the wire.
+    const desired = [...new Set(dto.curriculumIds)];
+
+    const [curricula, currentRows] = await this.prisma.$transaction([
+      this.prisma.curriculum.findMany({
+        where: { id: { in: desired } },
+        select: { id: true, status: true, subject: { select: { status: true } } },
+      }),
+      this.prisma.schoolContentEntitlement.findMany({
+        where: { schoolId },
+        select: {
+          id: true,
+          curriculumId: true,
+          curriculum: { select: { subject: { select: { status: true } } } },
+        },
+      }),
+    ]);
+
+    const curriculumById = new Map(curricula.map((curriculum) => [curriculum.id, curriculum]));
+    if (desired.some((id) => !curriculumById.has(id))) {
+      throw new NotFoundException('Curriculum not found');
+    }
+
+    const currentIds = new Set(currentRows.map((row) => row.curriculumId));
+
+    // Same rules as grant(): retirement and archival stop *new* grants, not ones already
+    // held. The admin UI only ever offers grantable curricula, so either can appear here
+    // only if it isn't already granted — reject that, exactly as a single grant() would.
+    for (const id of desired) {
+      const curriculum = curriculumById.get(id);
+      if (curriculum === undefined || currentIds.has(id)) {
+        continue;
+      }
+      if (curriculum.subject.status === SubjectStatus.RETIRED) {
+        throw new ConflictException('This subject is retired and cannot be granted');
+      }
+      if (curriculum.status === CurriculumStatus.ARCHIVED) {
+        throw new ConflictException('This curriculum is archived and cannot be granted');
+      }
+    }
+
+    // The UI's grid only shows ACTIVE subjects, so a curriculum on a retired subject can
+    // never appear in `desired`. Diffing against every current row would then mark it for
+    // revocation on every save; scoping the diff to still-ACTIVE rows leaves it untouched,
+    // matching the comment on grant(): "grants already held stay live".
+    const desiredSet = new Set(desired);
+    const toRevoke = currentRows.filter(
+      (row) => row.curriculum.subject.status !== SubjectStatus.RETIRED && !desiredSet.has(row.curriculumId),
+    );
+    const toGrant = desired.filter((id) => !currentIds.has(id));
+
+    await this.prisma.$transaction([
+      this.prisma.schoolContentEntitlement.deleteMany({
+        where: { schoolId, id: { in: toRevoke.map((row) => row.id) } },
+      }),
+      // skipDuplicates makes a concurrent double-save idempotent instead of a P2002 500.
+      this.prisma.schoolContentEntitlement.createMany({
+        data: toGrant.map((curriculumId) => ({ schoolId, curriculumId })),
+        skipDuplicates: true,
+      }),
+    ]);
+
+    return this.listForSchool(schoolId);
   }
 
   async revoke(schoolId: string, entitlementId: string): Promise<void> {

@@ -51,7 +51,7 @@ export function ImportUploadForm({ onUploaded }: ImportUploadFormProps) {
           Download CSV template
         </a>
         <span className="text-xs text-gray-500">
-          Columns: first_name, last_name, email, grade_level, section, roll_number (optional).
+          Columns: first_name, last_name, email; grade_level, section, roll_number, and password are optional.
           Max 5 MB / 2,000 rows.
         </span>
       </div>

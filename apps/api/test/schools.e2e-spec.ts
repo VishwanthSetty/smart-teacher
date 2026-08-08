@@ -1,7 +1,13 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { AppModule } from '../src/app.module';
+import { MailService } from '../src/mail/mail.service';
+import { createE2eApp } from './utils/e2e-app';
+
+const mailService = {
+  sendUserInvite: jest.fn().mockResolvedValue(undefined),
+  sendPasswordReset: jest.fn().mockResolvedValue(undefined),
+  sendSchoolAdminWelcome: jest.fn().mockResolvedValue(undefined),
+};
 
 describe('Schools + tenant provisioning (e2e)', () => {
   let app: INestApplication;
@@ -18,15 +24,9 @@ describe('Schools + tenant provisioning (e2e)', () => {
   }
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
-    );
-    await app.init();
+    app = await createE2eApp({
+      overrideProviders: (builder) => builder.overrideProvider(MailService).useValue(mailService),
+    });
 
     superAdminToken = await login('superadmin@smartteacher.dev', 'Passw0rd!');
     schoolAdminToken = await login('admin@smartteacher.dev', 'Passw0rd!', 'demo-school');
@@ -51,6 +51,44 @@ describe('Schools + tenant provisioning (e2e)', () => {
 
     expect(response.body.slug).toBe(`provisioned-${suffix}`);
     expect(response.body.status).toBe('ACTIVE');
+  });
+
+  it('provisions a school with an initial password and no invite, and the admin can log in immediately', async () => {
+    const slug = `password-set-${suffix}`;
+    const email = `head-pwd-${suffix}@example.com`;
+
+    const response = await request(app.getHttpServer())
+      .post('/admin/schools')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({
+        name: 'Password Set High',
+        slug,
+        academicYear: '2025-2026',
+        adminEmail: email,
+        adminName: 'Head Teacher',
+        adminPassword: 'Passw0rd!',
+        sendInvite: false,
+      })
+      .expect(201);
+
+    expect(response.body.slug).toBe(slug);
+
+    await login(email, 'Passw0rd!', slug);
+  });
+
+  it('rejects provisioning with neither a password nor an invite', async () => {
+    await request(app.getHttpServer())
+      .post('/admin/schools')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({
+        name: 'No Access High',
+        slug: `no-access-${suffix}`,
+        academicYear: '2025-2026',
+        adminEmail: `no-access-${suffix}@example.com`,
+        adminName: 'Head Teacher',
+        sendInvite: false,
+      })
+      .expect(400);
   });
 
   it('lets SUPER_ADMIN list schools with pagination metadata', async () => {
@@ -113,9 +151,7 @@ describe('Schools + tenant provisioning (e2e)', () => {
         adminName: 'Shared Admin',
       })
       .expect(201);
-    // Two provisioning calls, and each one sends a real invite email over SMTP (~3.5s).
-    // Jest's 5s default is not enough for the pair.
-  }, 20000);
+  });
 
   it('forbids SCHOOL_ADMIN from reaching admin/schools', async () => {
     await request(app.getHttpServer())

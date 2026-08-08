@@ -9,7 +9,7 @@ import {
 import { EnrollmentStatus, Prisma, Role, StudentImportBatchStatus, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
-import { InvitesService } from '../invites/invites.service';
+import { PasswordsService } from '../passwords/passwords.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.interface';
 import { EnrollmentsService } from './enrollments.service';
 import {
@@ -68,7 +68,7 @@ export class StudentImportService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly invitesService: InvitesService,
+    private readonly passwords: PasswordsService,
     private readonly mailService: MailService,
     private readonly enrollments: EnrollmentsService,
   ) {}
@@ -129,7 +129,11 @@ export class StudentImportService {
 
   // Writes the valid rows. Invalid rows were filtered out before the transaction opens,
   // so a bad row can never abort the file — partial success is the required behaviour.
-  async confirmBatch(batchId: string, actor: AuthenticatedUser): Promise<StudentImportResultEntity> {
+  async confirmBatch(
+    batchId: string,
+    actor: AuthenticatedUser,
+    sendCredentialsEmail = false,
+  ): Promise<StudentImportResultEntity> {
     if (!actor.schoolId) {
       throw new ForbiddenException('A platform user cannot import students');
     }
@@ -151,7 +155,7 @@ export class StudentImportService {
     const candidateRows = this.readValidRows(batch.validRows);
     const knownErrors = this.readRowErrors(batch.invalidRows);
 
-    let created: { id: string; email: string; name: string; inviteToken: string }[] = [];
+    let created: { id: string; email: string; name: string; password: string }[] = [];
     let finalErrors: StudentImportRowError[] = knownErrors;
 
     try {
@@ -171,7 +175,9 @@ export class StudentImportService {
 
           for (let index = 0; index < rows.length; index += CREATE_CHUNK_SIZE) {
             const chunk = rows.slice(index, index + CREATE_CHUNK_SIZE);
-            const invites = chunk.map(() => this.invitesService.mintToken());
+            const passwords = await Promise.all(
+              chunk.map((row) => this.passwords.resolve(row.password, row.email)),
+            );
 
             const users = await tx.user.createManyAndReturn({
               data: chunk.map((row, offset) => ({
@@ -181,9 +187,10 @@ export class StudentImportService {
                 firstName: row.firstName,
                 lastName: row.lastName,
                 role: Role.STUDENT,
-                status: UserStatus.PENDING,
-                inviteTokenHash: invites[offset].tokenHash,
-                inviteTokenExpiresAt: invites[offset].expiresAt,
+                status: UserStatus.ACTIVE,
+                activatedAt: new Date(),
+                passwordHash: passwords[offset].passwordHash,
+                plainPassword: passwords[offset].password,
               })),
               select: { id: true, email: true },
             });
@@ -210,7 +217,7 @@ export class StudentImportService {
                   id,
                   email: row.email,
                   name: `${row.firstName} ${row.lastName}`,
-                  inviteToken: invites[offset].token,
+                  password: passwords[offset].password,
                 });
               }
             });
@@ -245,14 +252,16 @@ export class StudentImportService {
       throw error;
     }
 
-    const { invitesSent, invitesFailed } = await this.dispatchInvites(created, school);
+    const { emailsSent, emailsFailed } = sendCredentialsEmail
+      ? await this.dispatchCredentials(created, school)
+      : { emailsSent: 0, emailsFailed: 0 };
 
     return {
       batchId: batch.id,
       createdCount: created.length,
       skippedCount: finalErrors.length,
-      invitesSent,
-      invitesFailed,
+      emailsSent,
+      emailsFailed,
       invalidRows: finalErrors,
     };
   }
@@ -260,34 +269,34 @@ export class StudentImportService {
   // Invites go out only after the transaction commits, and a failure is counted rather
   // than thrown: the student already exists as PENDING and POST /users/:id/resend-invite
   // is the repair path. Rolling back a whole import over one bad mailbox would be worse.
-  private async dispatchInvites(
-    created: { email: string; name: string; inviteToken: string }[],
+  private async dispatchCredentials(
+    created: { email: string; name: string; password: string }[],
     school: { name: string; slug: string },
-  ): Promise<{ invitesSent: number; invitesFailed: number }> {
-    let invitesSent = 0;
-    let invitesFailed = 0;
+  ): Promise<{ emailsSent: number; emailsFailed: number }> {
+    let emailsSent = 0;
+    let emailsFailed = 0;
 
     for (const student of created) {
       try {
-        await this.mailService.sendUserInvite({
+        await this.mailService.sendCredentials({
           email: student.email,
           name: student.name,
           role: Role.STUDENT,
           schoolName: school.name,
           schoolSlug: school.slug,
-          inviteToken: student.inviteToken,
+          password: student.password,
         });
-        invitesSent += 1;
+        emailsSent += 1;
       } catch (error) {
-        invitesFailed += 1;
+        emailsFailed += 1;
         this.logger.error(
-          `Failed to send bulk-import invite to ${student.email}`,
+          `Failed to send bulk-import credentials to ${student.email}`,
           error instanceof Error ? error.stack : undefined,
         );
       }
     }
 
-    return { invitesSent, invitesFailed };
+    return { emailsSent, emailsFailed };
   }
 
   // Shared by preview and confirm so both apply exactly the same rules — a row that
@@ -324,6 +333,9 @@ export class StudentImportService {
     const resolvedSectionByRow = new Map<number, ResolvedSection>();
 
     for (const row of rows) {
+      if (row.gradeLevel === '' && row.section === '') {
+        continue;
+      }
       const key = `${row.gradeLevel.toLowerCase()}|${row.section.toLowerCase()}`;
       const section = sectionsByKey.get(key);
       if (section) {
@@ -352,7 +364,8 @@ export class StudentImportService {
       }
 
       const section = resolvedSectionByRow.get(row.rowNumber);
-      if (!section) {
+      const hasPlacement = row.gradeLevel !== '' || row.section !== '';
+      if (!section && hasPlacement) {
         if (!knownGradeLevels.has(row.gradeLevel.toLowerCase())) {
           errors.push({
             code: 'UNKNOWN_GRADE_LEVEL',
@@ -364,7 +377,7 @@ export class StudentImportService {
             message: `No section "${row.section}" exists for ${row.gradeLevel}. Create the section first.`,
           });
         }
-      } else if (row.rollNumber && takenRolls.has(`${section.id}|${row.rollNumber.toLowerCase()}`)) {
+      } else if (section && row.rollNumber && takenRolls.has(`${section.id}|${row.rollNumber.toLowerCase()}`)) {
         errors.push({
           code: 'ROLL_NUMBER_TAKEN',
           message: `Roll number ${row.rollNumber} is already used in ${row.gradeLevel} - ${row.section}.`,
@@ -494,7 +507,10 @@ export class StudentImportService {
       totalRows: batch.totalRows,
       validCount: batch.validCount,
       invalidCount: batch.invalidCount,
-      validRows: this.readValidRows(batch.validRows),
+      validRows: this.readValidRows(batch.validRows).map(({ password, ...row }) => ({
+        ...row,
+        hasPassword: Boolean(password),
+      })),
       invalidRows: this.readRowErrors(batch.invalidRows),
       warnings: (batch.warnings ?? []) as unknown as StudentImportWarning[],
       createdAt: batch.createdAt,

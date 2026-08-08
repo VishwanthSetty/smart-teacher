@@ -7,18 +7,16 @@ import { AuthenticatedUser } from '../auth/types/authenticated-user.interface';
 import { VideosService } from './videos.service';
 import { VideoEntity } from './entities/video.entity';
 
-// The school-facing library. Per the F-06 capability table, "watch entitled videos" is a
-// TEACHER and STUDENT capability — SCHOOL_ADMIN and SUPER_ADMIN are not granted it here.
-// SUPER_ADMIN manages the library through /admin/videos instead, and SCHOOL_ADMIN gets a
-// 403, which is the acceptance criterion "School Admins receive 403 on all video-content
-// endpoints".
+// The school-facing library. Browsing and watching entitled content is available to
+// SCHOOL_ADMIN, TEACHER and STUDENT. SUPER_ADMIN remains excluded because platform
+// authors manage the library through /admin/videos instead.
 //
 // No @BypassTenantScope(): both roles carry a real schoolId, and the tenant guard
 // scoping SchoolContentEntitlement to it is exactly what makes the read safe.
 @ApiTags('videos')
 @ApiBearerAuth()
 @Controller('videos')
-@Roles(Role.TEACHER, Role.STUDENT)
+@Roles(Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT)
 export class VideosController {
   constructor(private readonly videosService: VideosService) {}
 

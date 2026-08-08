@@ -24,6 +24,8 @@ export class ListAdminVideosQueryDto {
   @IsEnum(VideoStatus)
   status?: VideoStatus;
 
+  // Grade level and subject remain useful filters even though a video no longer carries
+  // them — they resolve through the node's curriculum.
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
@@ -33,6 +35,16 @@ export class ListAdminVideosQueryDto {
   @IsOptional()
   @IsString()
   subjectId?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  curriculumId?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  contentNodeId?: string;
 
   @ApiProperty({ required: false })
   @IsOptional()

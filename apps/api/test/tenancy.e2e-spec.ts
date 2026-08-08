@@ -21,6 +21,7 @@ describe('Tenant isolation (e2e)', () => {
   let adminAToken: string;
   let ownUserId: string;
   let schoolBUserId: string;
+  let schoolBTeacherId: string;
   let schoolA: School;
   let schoolB: School;
 
@@ -61,6 +62,13 @@ describe('Tenant isolation (e2e)', () => {
       .set('Authorization', `Bearer ${adminBToken}`)
       .expect(200);
     schoolBUserId = meB.body.id;
+    const usersB = await request(app.getHttpServer())
+      .get('/admin/users')
+      .set('Authorization', `Bearer ${adminBToken}`)
+      .expect(200);
+    schoolBTeacherId = (usersB.body as Array<{ id: string; role: Role }>).find(
+      (user) => user.role === Role.TEACHER,
+    )?.id ?? '';
 
     schoolA = await prisma.school.findUniqueOrThrow({ where: { slug: 'demo-school' } });
     schoolB = await prisma.school.findUniqueOrThrow({ where: { slug: 'demo-school-b' } });
@@ -84,6 +92,13 @@ describe('Tenant isolation (e2e)', () => {
   it('returns 404, not 403, when School A requests a School B user by id', async () => {
     await request(app.getHttpServer())
       .get(`/admin/users/${schoolBUserId}`)
+      .set('Authorization', `Bearer ${adminAToken}`)
+      .expect(404);
+  });
+
+  it("returns 404, not 403, when School A reveals School B's teacher password", async () => {
+    await request(app.getHttpServer())
+      .get(`/teachers/${schoolBTeacherId}/password`)
       .set('Authorization', `Bearer ${adminAToken}`)
       .expect(404);
   });
@@ -242,8 +257,11 @@ describe('Tenant isolation (e2e)', () => {
     let unentitledVideoId: string;
 
     beforeAll(async () => {
+      // Ordered, not arbitrary: the fixtures grant school A a published curriculum that
+      // holds videos *and* a draft one that does not, so an unordered pick could land on
+      // the draft and leave the "entitled" lookup below with nothing to find.
       const entitlement = await asTenant(schoolA, () =>
-        prisma.schoolContentEntitlement.findFirstOrThrow({}),
+        prisma.schoolContentEntitlement.findFirstOrThrow({ orderBy: { grantedAt: 'asc' } }),
       );
 
       // status: READY on both is load-bearing, not incidental. Every school-facing read
@@ -255,15 +273,17 @@ describe('Tenant isolation (e2e)', () => {
       const entitled = await tenantContext.runWithSystemBypass(() =>
         prisma.video.findFirstOrThrow({
           where: {
-            gradeLevelId: entitlement.gradeLevelId,
-            subjectId: entitlement.subjectId,
+            node: { curriculumId: entitlement.curriculumId },
             status: VideoStatus.READY,
           },
         }),
       );
       const unentitled = await tenantContext.runWithSystemBypass(() =>
         prisma.video.findFirstOrThrow({
-          where: { NOT: { subjectId: entitlement.subjectId }, status: VideoStatus.READY },
+          where: {
+            node: { curriculumId: { not: entitlement.curriculumId } },
+            status: VideoStatus.READY,
+          },
         }),
       );
 

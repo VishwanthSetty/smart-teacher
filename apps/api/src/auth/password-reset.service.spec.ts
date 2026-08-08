@@ -214,6 +214,7 @@ describe('PasswordResetService', () => {
         where: { id: 'user-1' },
         data: {
           passwordHash: expect.any(String),
+          plainPassword: null,
           resetTokenHash: null,
           resetTokenExpiresAt: null,
         },

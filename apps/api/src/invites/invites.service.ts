@@ -69,6 +69,7 @@ export class InvitesService {
         where: { id: user.id },
         data: {
           passwordHash: await bcrypt.hash(password, BCRYPT_ROUNDS),
+          plainPassword: null,
           status: UserStatus.ACTIVE,
           activatedAt: new Date(),
           inviteTokenHash: null,

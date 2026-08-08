@@ -4,6 +4,8 @@ import {
   IMPORT_TEMPLATE_HEADERS,
   MAX_IMPORT_ROWS,
   MAX_NAME_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  MAX_PASSWORD_LENGTH,
   REQUIRED_HEADERS,
 } from './teacher-import.constants';
 
@@ -15,7 +17,10 @@ export type TeacherImportErrorCode =
   | 'DUPLICATE_IN_FILE'
   | 'DUPLICATE_EXISTING'
   | 'UNKNOWN_SUBJECT'
-  | 'RETIRED_SUBJECT';
+  | 'RETIRED_SUBJECT'
+  | 'PASSWORD_TOO_SHORT'
+  | 'PASSWORD_TOO_LONG'
+  | 'PASSWORD_MATCHES_EMAIL';
 
 export type TeacherImportWarningCode = 'EXTRA_COLUMNS';
 
@@ -41,6 +46,7 @@ export interface ParsedTeacherRow {
   name: string;
   subjectCodes: string[];
   rawSubjectCodes: string;
+  password: string;
 }
 
 export interface TeacherImportWarning {
@@ -178,6 +184,7 @@ export function parseTeacherCsv(buffer: Buffer): ParsedTeacherFile {
     const email = rawEmail.toLowerCase();
     const name = cell(record, 'name');
     const rawSubjectCodes = cell(record, 'subject_codes');
+    const password = cell(record, 'password');
 
     // Every applicable reason is collected, not just the first, so one correction pass
     // fixes the row rather than surfacing its problems one upload at a time.
@@ -196,6 +203,15 @@ export function parseTeacherCsv(buffer: Buffer): ParsedTeacherFile {
         code: 'NAME_TOO_LONG',
         message: `Name is ${name.length} characters; the limit is ${MAX_NAME_LENGTH}.`,
       });
+    }
+
+    if (password !== '' && password.length < MIN_PASSWORD_LENGTH) {
+      errors.push({ code: 'PASSWORD_TOO_SHORT', message: 'Password must be at least 8 characters.' });
+    } else if (password.length > MAX_PASSWORD_LENGTH) {
+      errors.push({ code: 'PASSWORD_TOO_LONG', message: 'Password must be at most 72 characters.' });
+    }
+    if (password !== '' && email !== '' && password.toLowerCase() === email.toLowerCase()) {
+      errors.push({ code: 'PASSWORD_MATCHES_EMAIL', message: 'Password must be different from the email address.' });
     }
 
     if (email !== '') {
@@ -223,6 +239,7 @@ export function parseTeacherCsv(buffer: Buffer): ParsedTeacherFile {
       name,
       subjectCodes: splitSubjectCodes(rawSubjectCodes),
       rawSubjectCodes,
+      password,
     });
   }
 

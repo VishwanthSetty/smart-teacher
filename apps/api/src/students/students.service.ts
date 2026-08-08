@@ -1,8 +1,8 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EnrollmentStatus, Prisma, Role, RefreshTokenRevokeReason, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
-import { InvitesService } from '../invites/invites.service';
+import { PasswordsService } from '../passwords/passwords.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.interface';
 import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
@@ -59,10 +59,12 @@ function toEntity(user: StudentRow): StudentEntity {
 
 @Injectable()
 export class StudentsService {
+  private readonly logger = new Logger(StudentsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly mailService: MailService,
-    private readonly invitesService: InvitesService,
+    private readonly passwordsService: PasswordsService,
     private readonly enrollments: EnrollmentsService,
   ) {}
 
@@ -79,13 +81,18 @@ export class StudentsService {
 
     // A cross-tenant section id must 404, not leak existence via a validation error —
     // the tenant guard already scopes this read to the caller's own school.
-    const section = await this.prisma.section.findUnique({ where: { id: dto.sectionId } });
-    if (!section) {
-      throw new NotFoundException('Section not found');
+    if (dto.rollNumber && !dto.sectionId) {
+      throw new BadRequestException('Choose a section before assigning a roll number');
     }
 
-    const { token: inviteToken, tokenHash: inviteTokenHash, expiresAt: inviteTokenExpiresAt } =
-      this.invitesService.mintToken();
+    if (dto.sectionId) {
+      const section = await this.prisma.section.findUnique({ where: { id: dto.sectionId } });
+      if (!section) {
+        throw new NotFoundException('Section not found');
+      }
+    }
+
+    const { password, passwordHash } = await this.passwordsService.resolve(dto.password, dto.email);
     const name = `${dto.firstName} ${dto.lastName}`;
 
     let student: StudentRow;
@@ -98,12 +105,17 @@ export class StudentsService {
             firstName: dto.firstName,
             lastName: dto.lastName,
             role: Role.STUDENT,
-            status: UserStatus.PENDING,
+            status: UserStatus.ACTIVE,
+            activatedAt: new Date(),
             schoolId,
-            inviteTokenHash,
-            inviteTokenExpiresAt,
+            passwordHash,
+            plainPassword: password,
           },
         });
+
+        if (!dto.sectionId) {
+          return { ...user, enrollments: [] };
+        }
 
         const enrollment = await this.enrollments.enroll(tx, {
           schoolId,
@@ -125,18 +137,22 @@ export class StudentsService {
       throw error;
     }
 
-    // After the transaction commits: the student already exists as PENDING even if the
-    // mail send fails, and resend-invite is the repair path (mirrors TeacherImportService).
-    await this.mailService.sendUserInvite({
-      email: dto.email,
-      name,
-      role: Role.STUDENT,
-      schoolName: school.name,
-      schoolSlug: school.slug,
-      inviteToken,
-    });
+    if (dto.sendCredentialsEmail) {
+      try {
+        await this.mailService.sendCredentials({
+          email: dto.email,
+          name,
+          role: Role.STUDENT,
+          schoolName: school.name,
+          schoolSlug: school.slug,
+          password,
+        });
+      } catch (error) {
+        this.logger.error(`Failed to send credentials to ${dto.email}`, error instanceof Error ? error.stack : undefined);
+      }
+    }
 
-    return toEntity(student);
+    return { ...toEntity(student), password };
   }
 
   async findAll(query: ListStudentsQueryDto): Promise<PaginatedStudentsEntity> {
@@ -263,5 +279,29 @@ export class StudentsService {
     }
 
     return toEntity(updated);
+  }
+
+  async getPassword(id: string): Promise<{ password: string | null }> {
+    const student = await this.prisma.user.findUnique({ where: { id }, select: { role: true, plainPassword: true } });
+    if (!student || student.role !== Role.STUDENT) {
+      throw new NotFoundException('Student not found');
+    }
+    return { password: student.plainPassword };
+  }
+
+  async setPassword(id: string, supplied: string | undefined): Promise<{ password: string }> {
+    const student = await this.prisma.user.findUnique({ where: { id }, select: { role: true, email: true } });
+    if (!student || student.role !== Role.STUDENT) {
+      throw new NotFoundException('Student not found');
+    }
+    const { password, passwordHash } = await this.passwordsService.resolve(supplied, student.email);
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id }, data: { passwordHash, plainPassword: password } }),
+      this.prisma.refreshToken.updateMany({
+        where: { userId: id, revokedAt: null },
+        data: { revokedAt: new Date(), revokeReason: RefreshTokenRevokeReason.PASSWORD_RESET },
+      }),
+    ]);
+    return { password };
   }
 }

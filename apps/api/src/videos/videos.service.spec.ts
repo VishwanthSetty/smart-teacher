@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { SubjectStatus, VideoStatus } from '@prisma/client';
+import { CurriculumStatus, SubjectStatus, VideoStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActorContentScopeService } from '../entitlements/actor-content-scope.service';
 import { StorageService } from '../storage/storage.service';
@@ -12,6 +12,47 @@ import { MAX_VIDEO_BYTES } from './video-ingest.constants';
 
 const VIDEO_ID = 'video-1';
 const SOURCE_KEY = `${VIDEO_ID}/source.mp4`;
+const NODE_ID = 'node-1';
+
+// Every read that produces an AdminVideoEntity joins through the content node, so a
+// mocked row has to carry that join or the mapper has nothing to flatten.
+function videoRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: VIDEO_ID,
+    title: 'Fractions',
+    description: null,
+    durationSecs: null,
+    sizeBytes: null,
+    contentType: null,
+    failureReason: null,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    contentNodeId: NODE_ID,
+    node: {
+      title: 'Fractions',
+      curriculumId: 'curriculum-1',
+      curriculum: { gradeLevelId: 'grade-1', subjectId: 'subject-1' },
+    },
+    ...overrides,
+  };
+}
+
+// The shape assertNodeUsable reads: a content-holding level on a live curriculum.
+function usableNode(overrides: Record<string, unknown> = {}) {
+  return {
+    depth: 2,
+    curriculum: {
+      status: CurriculumStatus.DRAFT,
+      subject: { status: SubjectStatus.ACTIVE },
+      schema: {
+        levels: [
+          { depth: 1, canHoldContent: false },
+          { depth: 2, canHoldContent: true },
+        ],
+      },
+    },
+    ...overrides,
+  };
+}
 
 describe('VideosService', () => {
   let service: VideosService;
@@ -26,8 +67,7 @@ describe('VideosService', () => {
       delete: jest.Mock;
     };
     videoRendition: { deleteMany: jest.Mock };
-    gradeLevel: { count: jest.Mock };
-    subject: { findUnique: jest.Mock };
+    contentNode: { findUnique: jest.Mock };
     $transaction: jest.Mock;
   };
   let storage: {
@@ -47,13 +87,12 @@ describe('VideosService', () => {
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
         create: jest.fn().mockResolvedValue({ id: VIDEO_ID }),
-        update: jest.fn().mockResolvedValue({ id: VIDEO_ID, status: VideoStatus.UPLOADING }),
+        update: jest.fn().mockResolvedValue(videoRow({ status: VideoStatus.UPLOADING })),
         delete: jest.fn().mockResolvedValue({ id: VIDEO_ID }),
       },
       videoRendition: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-      gradeLevel: { count: jest.fn().mockResolvedValue(1) },
-      subject: { findUnique: jest.fn().mockResolvedValue({ status: SubjectStatus.ACTIVE }) },
-      // Handles both call shapes the service uses: the array form for the taxonomy
+      contentNode: { findUnique: jest.fn().mockResolvedValue(usableNode()) },
+      // Handles both call shapes the service uses: the array form for the batched
       // pre-checks and the callback form for the create-then-key write.
       $transaction: jest.fn((arg: unknown) =>
         typeof arg === 'function' ? (arg as (tx: unknown) => unknown)(prisma) : Promise.all(arg as unknown[]),
@@ -87,15 +126,14 @@ describe('VideosService', () => {
 
   const createDto = {
     title: 'Fractions',
-    gradeLevelId: 'grade-1',
-    subjectId: 'subject-1',
+    contentNodeId: NODE_ID,
     contentType: 'video/mp4' as const,
     sizeBytes: 1024,
   };
 
   describe('create', () => {
     it('presigns the key derived from the created row, not one the caller chose', async () => {
-      prisma.video.update.mockResolvedValue({ id: VIDEO_ID, status: VideoStatus.UPLOADING });
+      prisma.video.update.mockResolvedValue(videoRow({ status: VideoStatus.UPLOADING }));
 
       const ticket = await service.create(createDto);
 
@@ -106,8 +144,8 @@ describe('VideosService', () => {
       expect(ticket.uploadUrl).toBe('https://storage.test/put');
     });
 
-    it('404s on an unknown grade level before creating anything', async () => {
-      prisma.gradeLevel.count.mockResolvedValue(0);
+    it('404s on an unknown content node before creating anything', async () => {
+      prisma.contentNode.findUnique.mockResolvedValue(null);
 
       await expect(service.create(createDto)).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.video.create).not.toHaveBeenCalled();
@@ -115,10 +153,42 @@ describe('VideosService', () => {
     });
 
     it('409s on a retired subject rather than admitting new content to it', async () => {
-      prisma.subject.findUnique.mockResolvedValue({ status: SubjectStatus.RETIRED });
+      prisma.contentNode.findUnique.mockResolvedValue(
+        usableNode({
+          curriculum: {
+            status: CurriculumStatus.DRAFT,
+            subject: { status: SubjectStatus.RETIRED },
+            schema: { levels: [{ depth: 2, canHoldContent: true }] },
+          },
+        }),
+      );
 
       await expect(service.create(createDto)).rejects.toBeInstanceOf(ConflictException);
       expect(storage.createPresignedUpload).not.toHaveBeenCalled();
+    });
+
+    it('409s on an archived curriculum', async () => {
+      prisma.contentNode.findUnique.mockResolvedValue(
+        usableNode({
+          curriculum: {
+            status: CurriculumStatus.ARCHIVED,
+            subject: { status: SubjectStatus.ACTIVE },
+            schema: { levels: [{ depth: 2, canHoldContent: true }] },
+          },
+        }),
+      );
+
+      await expect(service.create(createDto)).rejects.toBeInstanceOf(ConflictException);
+      expect(storage.createPresignedUpload).not.toHaveBeenCalled();
+    });
+
+    // Videos hang off topics, not chapters — a rule the API enforces rather than one the
+    // UI is trusted to respect.
+    it('409s when the node sits at a level that cannot hold content', async () => {
+      prisma.contentNode.findUnique.mockResolvedValue(usableNode({ depth: 1 }));
+
+      await expect(service.create(createDto)).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.video.create).not.toHaveBeenCalled();
     });
   });
 
@@ -132,11 +202,9 @@ describe('VideosService', () => {
     it('queues the video with the size read off the object, not the declared one', async () => {
       prisma.video.findUnique.mockResolvedValue(uploading);
       storage.statObject.mockResolvedValue({ sizeBytes: 4096, contentType: 'video/mp4' });
-      prisma.video.update.mockResolvedValue({
-        id: VIDEO_ID,
-        status: VideoStatus.QUEUED,
-        transcodeAttempts: 1,
-      });
+      prisma.video.update.mockResolvedValue(
+        videoRow({ status: VideoStatus.QUEUED, transcodeAttempts: 1 }),
+        );
 
       await service.markUploaded(VIDEO_ID);
 
@@ -161,11 +229,9 @@ describe('VideosService', () => {
     it('bumps the attempt token and enqueues the value it committed', async () => {
       prisma.video.findUnique.mockResolvedValue(uploading);
       storage.statObject.mockResolvedValue({ sizeBytes: 4096, contentType: 'video/mp4' });
-      prisma.video.update.mockResolvedValue({
-        id: VIDEO_ID,
-        status: VideoStatus.QUEUED,
-        transcodeAttempts: 4,
-      });
+      prisma.video.update.mockResolvedValue(
+        videoRow({ status: VideoStatus.QUEUED, transcodeAttempts: 4 }),
+        );
 
       await service.markUploaded(VIDEO_ID);
 
@@ -184,11 +250,9 @@ describe('VideosService', () => {
     it('logs rather than throws when the broker refuses the job', async () => {
       prisma.video.findUnique.mockResolvedValue(uploading);
       storage.statObject.mockResolvedValue({ sizeBytes: 4096, contentType: 'video/mp4' });
-      prisma.video.update.mockResolvedValue({
-        id: VIDEO_ID,
-        status: VideoStatus.QUEUED,
-        transcodeAttempts: 1,
-      });
+      prisma.video.update.mockResolvedValue(
+        videoRow({ status: VideoStatus.QUEUED, transcodeAttempts: 1 }),
+        );
       transcodeQueue.enqueue.mockRejectedValue(new Error('redis unreachable'));
 
       await expect(service.markUploaded(VIDEO_ID)).resolves.toEqual(
@@ -201,11 +265,9 @@ describe('VideosService', () => {
     it('does not leak the attempt token into the response', async () => {
       prisma.video.findUnique.mockResolvedValue(uploading);
       storage.statObject.mockResolvedValue({ sizeBytes: 4096, contentType: 'video/mp4' });
-      prisma.video.update.mockResolvedValue({
-        id: VIDEO_ID,
-        status: VideoStatus.QUEUED,
-        transcodeAttempts: 2,
-      });
+      prisma.video.update.mockResolvedValue(
+        videoRow({ status: VideoStatus.QUEUED, transcodeAttempts: 2 }),
+        );
 
       const result = await service.markUploaded(VIDEO_ID);
 
@@ -353,11 +415,9 @@ describe('VideosService', () => {
     const failed = { id: VIDEO_ID, status: VideoStatus.FAILED, sourceKey: SOURCE_KEY };
 
     beforeEach(() => {
-      prisma.video.update.mockResolvedValue({
-        id: VIDEO_ID,
-        status: VideoStatus.QUEUED,
-        transcodeAttempts: 2,
-      });
+      prisma.video.update.mockResolvedValue(
+        videoRow({ status: VideoStatus.QUEUED, transcodeAttempts: 2 }),
+        );
     });
 
     it('re-queues from the source already in the bucket, clearing the last failure', async () => {

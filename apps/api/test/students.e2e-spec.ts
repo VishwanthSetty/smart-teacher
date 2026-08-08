@@ -15,6 +15,7 @@ const MISSING_ID = 'missing-00000000000000000000000';
 const mailService = {
   sendUserInvite: jest.fn().mockResolvedValue(undefined),
   sendPasswordReset: jest.fn().mockResolvedValue(undefined),
+  sendCredentials: jest.fn().mockResolvedValue(undefined),
 };
 
 describe('Students (e2e)', () => {
@@ -99,27 +100,39 @@ describe('Students (e2e)', () => {
   });
 
   beforeEach(() => {
-    mailService.sendUserInvite.mockClear();
+    mailService.sendCredentials.mockClear();
   });
 
   describe('onboarding', () => {
-    it('creates a PENDING student, enrolls them, and sends the invite', async () => {
-      const response = await createStudent(adminToken, { rollNumber: '501' }).expect(201);
+    it('creates an ACTIVE student, enrolls them, and optionally emails credentials', async () => {
+      const response = await createStudent(adminToken, { rollNumber: '501', sendCredentialsEmail: true }).expect(201);
 
       expect(response.body).toMatchObject({
-        status: UserStatus.PENDING,
+        status: UserStatus.ACTIVE,
         firstName: 'Test',
         lastName: 'Student',
         enrollment: { sectionId: g5SectionBId, rollNumber: '501' },
       });
-      expect(mailService.sendUserInvite).toHaveBeenCalledWith(
+      expect(response.body.password).toEqual(expect.any(String));
+      expect(mailService.sendCredentials).toHaveBeenCalledWith(
         expect.objectContaining({ role: Role.STUDENT, schoolSlug: 'demo-school' }),
       );
     });
 
+    it('creates a student without an enrollment when the school does not use sections', async () => {
+      const response = await createStudent(adminToken, { sectionId: undefined }).expect(201);
+
+      expect(response.body).toMatchObject({ status: UserStatus.ACTIVE, enrollment: null });
+      expect(response.body.password).toEqual(expect.any(String));
+    });
+
+    it('rejects a roll number without a section', async () => {
+      await createStudent(adminToken, { sectionId: undefined, rollNumber: '501' }).expect(400);
+    });
+
     it('rejects a section from another school with a 404, not a validation error', async () => {
       await createStudent(adminToken, { sectionId: schoolBSectionId }).expect(404);
-      expect(mailService.sendUserInvite).not.toHaveBeenCalled();
+      expect(mailService.sendCredentials).not.toHaveBeenCalled();
     });
 
     it('rejects a duplicate email with a 409', async () => {
@@ -194,9 +207,8 @@ describe('Students (e2e)', () => {
   // Acceptance criteria from the ticket.
   describe('acceptance criteria', () => {
     it('changing section immediately changes the video library the student sees', async () => {
-      // Exercised through the seeded, already-ACTIVE student rather than a freshly
-      // onboarded one: a PENDING student has no password and cannot log in, and this
-      // assertion needs a real access token to call GET /videos as STUDENT.
+      // Exercised through the seeded student so this assertion can reuse the stable
+      // fixture credentials while testing the live enrollment change.
       const studentToken = await login(app, SEED_ACCOUNTS[Role.STUDENT].email, SEED_PASSWORD, 'demo-school');
       const originalEnrollment = await tenantContext.runWithSystemBypass(() =>
         prisma.enrollment.findFirst({

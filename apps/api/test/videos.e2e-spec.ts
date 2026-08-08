@@ -14,8 +14,7 @@ interface Video {
   failureReason: string | null;
   sizeBytes: number | null;
   contentType: string | null;
-  gradeLevelId: string;
-  subjectId: string;
+  contentNodeId: string;
 }
 
 // The fixtures entitle demo-school to exactly (Grade 5, Mathematics) and demo-school-b to
@@ -69,9 +68,10 @@ describe('Videos (e2e)', () => {
   let app: INestApplication;
   let tokens: Record<Role, string>;
   let teacherB: string;
+  let schoolAdminB: string;
   let library: Video[];
-  let gradeLevelId: string;
-  let subjectId: string;
+  let contentNodeId: string;
+  let chapterNodeId: string;
   const storage = new FakeStorage();
   const transcodeQueue = { enqueue: jest.fn().mockResolvedValue(undefined) };
 
@@ -101,8 +101,7 @@ describe('Videos (e2e)', () => {
     const res = await post('/admin/videos', tokens[Role.SUPER_ADMIN])
       .send({
         title: `${INGEST_TITLE_PREFIX}${title}`,
-        gradeLevelId,
-        subjectId,
+        contentNodeId,
         contentType: MP4,
         sizeBytes: 1024,
         ...overrides,
@@ -156,8 +155,8 @@ describe('Videos (e2e)', () => {
 
   beforeAll(async () => {
     const fixtures = await seedContentFixtures();
-    gradeLevelId = fixtures.grade5Id;
-    subjectId = fixtures.mathsId;
+    contentNodeId = fixtures.g5MathsTopicId;
+    chapterNodeId = fixtures.g5MathsChapterId;
     await removeIngestFixtures();
 
     app = await createE2eApp({
@@ -170,6 +169,7 @@ describe('Videos (e2e)', () => {
     });
     tokens = await loginAllRoles(app);
     teacherB = await login(app, 'teacher-b@smartteacher.dev', SEED_PASSWORD, 'demo-school-b');
+    schoolAdminB = await login(app, 'admin-b@smartteacher.dev', SEED_PASSWORD, 'demo-school-b');
 
     const res = await get('/admin/videos', tokens[Role.SUPER_ADMIN]).expect(200);
     library = res.body.data;
@@ -193,6 +193,23 @@ describe('Videos (e2e)', () => {
       const res = await get('/videos', tokens[Role.TEACHER]).expect(200);
 
       expect(res.body.map((v: Video) => v.title)).toEqual([ENTITLED_TITLE]);
+    });
+
+    it("gives a SCHOOL_ADMIN the school's entitled library", async () => {
+      const res = await get('/videos', tokens[Role.SCHOOL_ADMIN]).expect(200);
+
+      expect(res.body.map((v: Video) => v.title)).toEqual([ENTITLED_TITLE]);
+      expect(res.body.map((v: Video) => v.title)).not.toContain(UNENTITLED_TITLE);
+    });
+
+    it('shows a SCHOOL_ADMIN from an unentitled school an empty library', async () => {
+      const res = await get('/videos', schoolAdminB).expect(200);
+
+      expect(res.body).toEqual([]);
+    });
+
+    it('returns 404, not 403, when a SCHOOL_ADMIN requests an unentitled video', async () => {
+      await get(`/videos/${idOf(UNENTITLED_TITLE)}`, tokens[Role.SCHOOL_ADMIN]).expect(404);
     });
 
     it('lets a teacher read an entitled video by id', async () => {
@@ -242,11 +259,10 @@ describe('Videos (e2e)', () => {
     });
   });
 
-  // F-06 acceptance criterion: "School Admins receive 403 on all video-content and
-  // entitlement endpoints (those are Super Admin only)."
+  // SCHOOL_ADMIN may consume entitled content, but platform authoring remains
+  // SUPER_ADMIN-only.
   describe('role boundaries', () => {
     it.each([
-      ['/videos'],
       ['/admin/videos'],
       ['/admin/grade-levels'],
       ['/admin/subjects'],
@@ -277,16 +293,28 @@ describe('Videos (e2e)', () => {
     });
 
     // Otherwise Prisma's raw foreign-key violation would surface as a 500.
-    it('404s rather than 500s when a new video names a nonexistent grade level', async () => {
+    it('404s rather than 500s when a new video names a nonexistent content node', async () => {
       await post('/admin/videos', tokens[Role.SUPER_ADMIN])
         .send({
           title: `${INGEST_TITLE_PREFIX}Orphan`,
-          gradeLevelId: 'missing-00000000000000000000000',
-          subjectId,
+          contentNodeId: 'missing-00000000000000000000000',
           contentType: MP4,
           sizeBytes: 1024,
         })
         .expect(404);
+    });
+
+    // Videos hang off topics, not chapters. The schema's Chapter level is not
+    // content-holding, so the API refuses the filing rather than trusting the UI to.
+    it('409s a video filed against a level that cannot hold content', async () => {
+      await post('/admin/videos', tokens[Role.SUPER_ADMIN])
+        .send({
+          title: `${INGEST_TITLE_PREFIX}Misfiled`,
+          contentNodeId: chapterNodeId,
+          contentType: MP4,
+          sizeBytes: 1024,
+        })
+        .expect(409);
     });
 
     // externalId is the transcoder's to mint and sourceKey is derived from the row id —
@@ -298,8 +326,7 @@ describe('Videos (e2e)', () => {
         await post('/admin/videos', tokens[Role.SUPER_ADMIN])
           .send({
             title: `${INGEST_TITLE_PREFIX}Sneaky`,
-            gradeLevelId,
-            subjectId,
+            contentNodeId,
             contentType: MP4,
             sizeBytes: 1024,
             [field]: value,
@@ -315,8 +342,7 @@ describe('Videos (e2e)', () => {
         .send({
           title: `${INGEST_TITLE_PREFIX}Fractions`,
           description: 'An introduction.',
-          gradeLevelId,
-          subjectId,
+          contentNodeId,
           contentType: MP4,
           sizeBytes: 2048,
         })
@@ -339,8 +365,7 @@ describe('Videos (e2e)', () => {
       await post('/admin/videos', tokens[Role.SUPER_ADMIN])
         .send({
           title: `${INGEST_TITLE_PREFIX}Rejected`,
-          gradeLevelId,
-          subjectId,
+          contentNodeId,
           contentType: MP4,
           sizeBytes: 1024,
           ...overrides,

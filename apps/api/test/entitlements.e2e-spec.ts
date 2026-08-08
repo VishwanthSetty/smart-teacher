@@ -15,18 +15,18 @@ describe('Content entitlements (e2e)', () => {
   let tokens: Record<Role, string>;
   let teacherB: string;
   let schoolBId: string;
-  let grade5Id: string;
-  let scienceId: string;
+  let g5ScienceCurriculumId: string;
+  let draftCurriculumId: string;
   const granted: string[] = [];
 
   const asSuperAdmin = () => tokens[Role.SUPER_ADMIN];
   const entitlementsPath = (schoolId: string) => `/admin/schools/${schoolId}/entitlements`;
 
-  async function grant(gradeLevelId: string, subjectId: string): Promise<string> {
+  async function grant(curriculumId: string): Promise<string> {
     const res = await request(app.getHttpServer())
       .post(entitlementsPath(schoolBId))
       .set('Authorization', `Bearer ${asSuperAdmin()}`)
-      .send({ gradeLevelId, subjectId })
+      .send({ curriculumId })
       .expect(201);
 
     granted.push(res.body.id);
@@ -55,25 +55,15 @@ describe('Content entitlements (e2e)', () => {
   }
 
   beforeAll(async () => {
-    await seedContentFixtures();
+    const fixtures = await seedContentFixtures();
+    g5ScienceCurriculumId = fixtures.g5ScienceCurriculumId;
+    draftCurriculumId = fixtures.draftCurriculumId;
+
     app = await createE2eApp();
     tokens = await loginAllRoles(app);
     teacherB = await login(app, 'teacher-b@smartteacher.dev', SEED_PASSWORD, 'demo-school-b');
 
     schoolBId = await findSchoolId('demo-school-b');
-
-    const [grades, subjects] = await Promise.all([
-      request(app.getHttpServer())
-        .get('/admin/grade-levels')
-        .set('Authorization', `Bearer ${asSuperAdmin()}`)
-        .expect(200),
-      request(app.getHttpServer())
-        .get('/admin/subjects')
-        .set('Authorization', `Bearer ${asSuperAdmin()}`)
-        .expect(200),
-    ]);
-    grade5Id = grades.body.find((g: { name: string }) => g.name === 'Grade 5').id;
-    scienceId = subjects.body.find((s: { code: string }) => s.code === 'science').id;
   });
 
   afterAll(async () => {
@@ -86,7 +76,7 @@ describe('Content entitlements (e2e)', () => {
 
   // A 500 here would mean the controller's @BypassTenantScope is missing:
   // SchoolContentEntitlement is tenant-scoped and SUPER_ADMIN carries no schoolId.
-  it('lets SUPER_ADMIN read a school\'s entitlements across the tenant boundary', async () => {
+  it("lets SUPER_ADMIN read a school's entitlements across the tenant boundary", async () => {
     const res = await request(app.getHttpServer())
       .get(entitlementsPath(schoolBId))
       .set('Authorization', `Bearer ${asSuperAdmin()}`)
@@ -102,7 +92,7 @@ describe('Content entitlements (e2e)', () => {
       .expect(200);
     expect(before.body).toEqual([]);
 
-    const id = await grant(grade5Id, scienceId);
+    const id = await grant(g5ScienceCurriculumId);
 
     const after = await request(app.getHttpServer())
       .get('/videos')
@@ -120,13 +110,34 @@ describe('Content entitlements (e2e)', () => {
     expect(revoked.body).toEqual([]);
   });
 
+  // Granting ahead of publication is allowed on purpose — the read path filters on
+  // PUBLISHED, so an unpublished curriculum reaches nobody until an operator publishes
+  // it. Requiring publish-before-grant would only be a sequencing trap.
+  it('accepts a grant on an unpublished curriculum but serves none of its content', async () => {
+    const id = await grant(draftCurriculumId);
+
+    const curricula = await request(app.getHttpServer())
+      .get('/curricula')
+      .set('Authorization', `Bearer ${teacherB}`)
+      .expect(200);
+    expect(curricula.body).toEqual([]);
+
+    await request(app.getHttpServer())
+      .get(`/curricula/${draftCurriculumId}/tree`)
+      .set('Authorization', `Bearer ${teacherB}`)
+      .expect(404);
+
+    await revoke(id);
+    granted.splice(granted.indexOf(id), 1);
+  });
+
   it('reports a repeat grant as a conflict rather than duplicating it', async () => {
-    const id = await grant(grade5Id, scienceId);
+    const id = await grant(g5ScienceCurriculumId);
 
     await request(app.getHttpServer())
       .post(entitlementsPath(schoolBId))
       .set('Authorization', `Bearer ${asSuperAdmin()}`)
-      .send({ gradeLevelId: grade5Id, subjectId: scienceId })
+      .send({ curriculumId: g5ScienceCurriculumId })
       .expect(409);
 
     await revoke(id);
@@ -134,9 +145,8 @@ describe('Content entitlements (e2e)', () => {
   });
 
   it.each([
-    ['school', () => entitlementsPath(MISSING_ID), () => ({ gradeLevelId: grade5Id, subjectId: scienceId })],
-    ['grade level', () => entitlementsPath(schoolBId), () => ({ gradeLevelId: MISSING_ID, subjectId: scienceId })],
-    ['subject', () => entitlementsPath(schoolBId), () => ({ gradeLevelId: grade5Id, subjectId: MISSING_ID })],
+    ['school', () => entitlementsPath(MISSING_ID), () => ({ curriculumId: g5ScienceCurriculumId })],
+    ['curriculum', () => entitlementsPath(schoolBId), () => ({ curriculumId: MISSING_ID })],
   ])('404s rather than 500s when the %s does not exist', async (_label, path, body) => {
     await request(app.getHttpServer())
       .post(path())
@@ -146,7 +156,7 @@ describe('Content entitlements (e2e)', () => {
   });
 
   it('404s revoking an entitlement id that belongs to a different school', async () => {
-    const id = await grant(grade5Id, scienceId);
+    const id = await grant(g5ScienceCurriculumId);
 
     // demo-school's own entitlement id, revoked via school B's path, must read as missing.
     const schoolAId = await findSchoolId('demo-school');
@@ -155,18 +165,19 @@ describe('Content entitlements (e2e)', () => {
       .get(entitlementsPath(schoolAId))
       .set('Authorization', `Bearer ${asSuperAdmin()}`)
       .expect(200);
+    const before = schoolAEntitlements.body.length;
 
     await request(app.getHttpServer())
       .delete(`${entitlementsPath(schoolBId)}/${schoolAEntitlements.body[0].id}`)
       .set('Authorization', `Bearer ${asSuperAdmin()}`)
       .expect(404);
 
-    // And school A still holds it.
+    // And school A still holds every one of them.
     const stillThere = await request(app.getHttpServer())
       .get(entitlementsPath(schoolAId))
       .set('Authorization', `Bearer ${asSuperAdmin()}`)
       .expect(200);
-    expect(stillThere.body).toHaveLength(1);
+    expect(stillThere.body).toHaveLength(before);
 
     await revoke(id);
     granted.splice(granted.indexOf(id), 1);
@@ -184,8 +195,95 @@ describe('Content entitlements (e2e)', () => {
       await request(app.getHttpServer())
         .post(entitlementsPath(schoolBId))
         .set('Authorization', `Bearer ${tokens[role]}`)
-        .send({ gradeLevelId: grade5Id, subjectId: scienceId })
+        .send({ curriculumId: g5ScienceCurriculumId })
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .put(entitlementsPath(schoolBId))
+        .set('Authorization', `Bearer ${tokens[role]}`)
+        .send({ curriculumIds: [] })
         .expect(403);
     },
   );
+
+  // The checkbox-matrix batch save — PUT replaces the school's whole entitlement set,
+  // rather than one grant/revoke round-trip per curriculum.
+  describe('PUT (batch replace)', () => {
+    // Restore the fixture's deliberate asymmetry even if an assertion above fails
+    // part-way — same reasoning as the outer afterAll's `granted` cleanup loop.
+    afterEach(async () => {
+      await request(app.getHttpServer())
+        .put(entitlementsPath(schoolBId))
+        .set('Authorization', `Bearer ${asSuperAdmin()}`)
+        .send({ curriculumIds: [] });
+    });
+
+    it('opens up content the moment the set is replaced, and closes it again on the next replace', async () => {
+      const before = await request(app.getHttpServer())
+        .get('/videos')
+        .set('Authorization', `Bearer ${teacherB}`)
+        .expect(200);
+      expect(before.body).toEqual([]);
+
+      const replaced = await request(app.getHttpServer())
+        .put(entitlementsPath(schoolBId))
+        .set('Authorization', `Bearer ${asSuperAdmin()}`)
+        .send({ curriculumIds: [g5ScienceCurriculumId] })
+        .expect(200);
+      expect(replaced.body).toHaveLength(1);
+
+      const after = await request(app.getHttpServer())
+        .get('/videos')
+        .set('Authorization', `Bearer ${teacherB}`)
+        .expect(200);
+      expect(after.body.map((v: { title: string }) => v.title)).toEqual([SCIENCE_VIDEO_TITLE]);
+
+      const cleared = await request(app.getHttpServer())
+        .put(entitlementsPath(schoolBId))
+        .set('Authorization', `Bearer ${asSuperAdmin()}`)
+        .send({ curriculumIds: [] })
+        .expect(200);
+      expect(cleared.body).toEqual([]);
+
+      const revoked = await request(app.getHttpServer())
+        .get('/videos')
+        .set('Authorization', `Bearer ${teacherB}`)
+        .expect(200);
+      expect(revoked.body).toEqual([]);
+    });
+
+    it('is a no-op safe to call twice with the same desired set', async () => {
+      const curriculumIds = [g5ScienceCurriculumId];
+
+      await request(app.getHttpServer())
+        .put(entitlementsPath(schoolBId))
+        .set('Authorization', `Bearer ${asSuperAdmin()}`)
+        .send({ curriculumIds })
+        .expect(200);
+
+      const second = await request(app.getHttpServer())
+        .put(entitlementsPath(schoolBId))
+        .set('Authorization', `Bearer ${asSuperAdmin()}`)
+        .send({ curriculumIds })
+        .expect(200);
+      expect(second.body).toHaveLength(1);
+
+      await request(app.getHttpServer())
+        .put(entitlementsPath(schoolBId))
+        .set('Authorization', `Bearer ${asSuperAdmin()}`)
+        .send({ curriculumIds: [] })
+        .expect(200);
+    });
+
+    it.each([
+      ['school', () => entitlementsPath(MISSING_ID), () => ({ curriculumIds: [g5ScienceCurriculumId] })],
+      ['curriculum', () => entitlementsPath(schoolBId), () => ({ curriculumIds: [MISSING_ID] })],
+    ])('404s rather than 500s when the %s does not exist', async (_label, path, body) => {
+      await request(app.getHttpServer())
+        .put(path())
+        .set('Authorization', `Bearer ${asSuperAdmin()}`)
+        .send(body())
+        .expect(404);
+    });
+  });
 });

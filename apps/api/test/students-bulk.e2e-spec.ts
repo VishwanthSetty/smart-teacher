@@ -17,6 +17,7 @@ const MISSING_BATCH_ID = 'missing-00000000000000000000000';
 const mailService = {
   sendUserInvite: jest.fn().mockResolvedValue(undefined),
   sendPasswordReset: jest.fn().mockResolvedValue(undefined),
+  sendCredentials: jest.fn().mockResolvedValue(undefined),
 };
 
 describe('Student bulk import (e2e)', () => {
@@ -63,7 +64,7 @@ describe('Student bulk import (e2e)', () => {
   });
 
   beforeEach(() => {
-    mailService.sendUserInvite.mockClear();
+    mailService.sendCredentials.mockClear();
   });
 
   function upload(token: string, fixture: string) {
@@ -119,7 +120,7 @@ describe('Student bulk import (e2e)', () => {
       expect(codes.get(8)).toEqual(['ROLL_NUMBER_TAKEN']);
 
       expect(await countStudents(adminToken)).toBe(before);
-      expect(mailService.sendUserInvite).not.toHaveBeenCalled();
+      expect(mailService.sendCredentials).not.toHaveBeenCalled();
     });
 
     it('rejects a file missing a required column, naming it', async () => {
@@ -178,23 +179,24 @@ describe('Student bulk import (e2e)', () => {
   });
 
   describe('confirm', () => {
-    it('imports the valid rows, skips the bad ones, and invites only the created students', async () => {
+    it('imports the valid rows, skips the bad ones, and emails only the created students', async () => {
       const before = await countStudents(adminToken);
       const preview = await upload(adminToken, 'mixed.csv').expect(201);
 
       const result = await request(app.getHttpServer())
         .post(`/students/bulk/${preview.body.batchId}/confirm`)
         .set('Authorization', `Bearer ${adminToken}`)
+        .send({ sendCredentialsEmail: true })
         .expect(200);
 
       expect(result.body.createdCount).toBe(2);
       expect(result.body.skippedCount).toBe(5);
-      expect(result.body.invitesSent).toBe(2);
-      expect(result.body.invitesFailed).toBe(0);
+      expect(result.body.emailsSent).toBe(2);
+      expect(result.body.emailsFailed).toBe(0);
       expect(await countStudents(adminToken)).toBe(before + 2);
 
-      expect(mailService.sendUserInvite).toHaveBeenCalledTimes(2);
-      expect(mailService.sendUserInvite).toHaveBeenCalledWith(
+      expect(mailService.sendCredentials).toHaveBeenCalledTimes(2);
+      expect(mailService.sendCredentials).toHaveBeenCalledWith(
         expect.objectContaining({ email: 'newstudent@example.com', role: Role.STUDENT }),
       );
 
@@ -206,7 +208,7 @@ describe('Student bulk import (e2e)', () => {
       const created = students.body.data.find(
         (student: { email: string }) => student.email === 'newstudent@example.com',
       );
-      expect(created).toMatchObject({ status: 'PENDING' });
+      expect(created).toMatchObject({ status: 'ACTIVE' });
       expect(created.enrollment).toMatchObject({ gradeLevelName: 'Grade 5', sectionName: 'A', rollNumber: '101' });
     });
 
@@ -256,7 +258,7 @@ describe('Student bulk import (e2e)', () => {
 
       expect(response.headers['content-type']).toContain('text/csv');
       expect(response.text).toContain(
-        'row_number,first_name,last_name,email,grade_level,section,roll_number,errors',
+        'row_number,first_name,last_name,email,grade_level,section,roll_number,password,errors',
       );
       expect(response.text).toContain('Duplicate of row 3 in this file.');
       expect(response.text).toContain('already exists in this school');

@@ -15,17 +15,14 @@ export function ImportResultSummary({ result, onReset }: ImportResultSummaryProp
           Imported {result.createdCount} student{result.createdCount === 1 ? '' : 's'}.
         </p>
         <p className="text-green-800">
-          {result.invitesSent} invite{result.invitesSent === 1 ? '' : 's'} sent · {result.skippedCount}{' '}
+          {result.emailsSent} credential email{result.emailsSent === 1 ? '' : 's'} sent · {result.skippedCount}{' '}
           row{result.skippedCount === 1 ? '' : 's'} skipped
         </p>
       </div>
 
-      {/* A failed invite left a PENDING student behind rather than rolling the import
-          back, so the fix is a resend, not a re-upload. */}
-      {result.invitesFailed > 0 && (
+      {result.emailsFailed > 0 && (
         <p className="text-sm text-amber-700">
-          {result.invitesFailed} invite email{result.invitesFailed === 1 ? '' : 's'} could not be
-          sent. Those students were still created — resend their invite from the list below.
+          {result.emailsFailed} credential email{result.emailsFailed === 1 ? '' : 's'} could not be sent. The students were still created.
         </p>
       )}
 

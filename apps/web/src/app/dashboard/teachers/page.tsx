@@ -7,11 +7,12 @@ import { apiListActiveSubjects, apiListUsers } from '@/lib/api-client';
 import { PageHeader } from '@/components/ui/page-header';
 import { BulkImportPanel } from './_components/bulk-import-panel';
 import { CreateTeacherForm } from './_components/create-teacher-form';
+import { TeacherRowActions } from './_components/teacher-row-actions';
 
 const ROUTE = '/dashboard/teachers';
 
 const STATUS_LABELS: Record<User['status'], string> = {
-  PENDING: 'Invite sent',
+  PENDING: 'Pending',
   ACTIVE: 'Active',
   DISABLED: 'Disabled',
 };
@@ -54,13 +55,14 @@ export default async function TeachersPage() {
               <th className="px-4 py-3 font-medium">Name</th>
               <th className="px-4 py-3 font-medium">Email</th>
               <th className="px-4 py-3 font-medium">Status</th>
+              {isAdmin && <th className="px-4 py-3" />}
             </tr>
           </thead>
           <tbody>
             {teachers.length === 0 ? (
               <tr>
-                <td colSpan={3} className="px-4 py-6 text-center text-gray-500">
-                  No teachers yet. Upload a CSV above to invite them.
+                <td colSpan={isAdmin ? 4 : 3} className="px-4 py-6 text-center text-gray-500">
+                  No teachers yet.
                 </td>
               </tr>
             ) : (
@@ -73,6 +75,7 @@ export default async function TeachersPage() {
                   </td>
                   <td className="px-4 py-3 text-gray-600">{teacher.email}</td>
                   <td className="px-4 py-3 text-gray-600">{STATUS_LABELS[teacher.status]}</td>
+                  {isAdmin && <td className="px-4 py-3"><TeacherRowActions teacher={teacher} /></td>}
                 </tr>
               ))
             )}

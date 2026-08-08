@@ -14,6 +14,17 @@ export class VideoEntity {
   durationSecs!: number | null;
 
   @ApiProperty()
+  contentNodeId!: string;
+
+  @ApiProperty()
+  contentNodeTitle!: string;
+
+  @ApiProperty()
+  curriculumId!: string;
+
+  // Denormalized off the node's curriculum so a flat video list can still label itself
+  // without a second round trip. The entitlement decision keys on curriculumId alone.
+  @ApiProperty()
   gradeLevelId!: string;
 
   @ApiProperty()

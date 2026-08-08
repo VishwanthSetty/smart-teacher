@@ -1,0 +1,17 @@
+name = "smart-teacher-playback"
+main = "src/index.ts"
+compatibility_date = "2026-08-03"
+
+routes = [
+  { pattern = "videos.example.com/*", zone_name = "example.com" }
+]
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "smart-teacher-media"
+
+[vars]
+PLAYBACK_PUBLIC_JWK = '{"kty":"EC","x":"7S7UP4nZbfI5uAVnLti7byIt_4z_cCbtR7dY7TP8t1M","y":"V-qp8bOKquK8_x8QJM-KJ3Fm2GWe_ri2qpg1VQx_RyY","crv":"P-256","kid":"dev-1","use":"sig","alg":"ES256"}'
+PLAYBACK_ISSUER = "smart-teacher-api"
+PLAYBACK_AUDIENCE = "smart-teacher-playback"
+ALLOWED_ORIGINS = "http://localhost:3000"

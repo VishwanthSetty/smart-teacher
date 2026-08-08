@@ -89,7 +89,7 @@ Log in at `/login` on the web app. The dashboard shows the current user's name a
 | `npm run lint` | Lint all apps |
 | `npm run test:e2e` | Run the API's e2e auth/RBAC smoke test |
 | `npm run db:migrate` | Apply Prisma migrations |
-| `npm run db:seed` | Seed the SUPER_ADMIN/SCHOOL_ADMIN/TEACHER/STUDENT test users |
+| `npm run db:seed` | Seed the platform SUPER_ADMIN account |
 | `npm run docker:up` / `docker:down` | Start/stop the full Docker stack (Postgres + api + web) |
 | `docker compose up -d --build` | Rebuild images and start the full stack |
 | `docker compose up -d postgres` | Start Postgres only (for the local dev workflow) |
