@@ -34,14 +34,23 @@ async function bootstrap() {
     }),
   );
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Smart Teacher API')
-    .setDescription('Smart Teacher backend API')
-    .setVersion('0.0.1')
-    .addBearerAuth()
-    .build();
-  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, swaggerDocument);
+  // Swagger stays off in production: it enumerates every route, DTO shape and auth
+  // scheme, which is exactly the recon a public API shouldn't hand out for free. Dev and
+  // test both keep it — test so e2e/local tooling can rely on it, dev so it's the daily
+  // driver `/api/docs` promises in CLAUDE.md. Gated on APP_ENV, not NODE_ENV — the
+  // Dockerfile always builds with NODE_ENV=production (Node's own build-mode flag), so
+  // gating on that would also blind the local `docker compose up` dev stack.
+  const appEnv = configService.get<'development' | 'test' | 'production'>('APP_ENV');
+  if (appEnv !== 'production') {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('Smart Teacher API')
+      .setDescription(`Smart Teacher backend API (${appEnv})`)
+      .setVersion('0.0.1')
+      .addBearerAuth()
+      .build();
+    const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, swaggerDocument);
+  }
 
   const port = configService.getOrThrow<number>('PORT');
   await app.listen(port);

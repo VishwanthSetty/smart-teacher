@@ -1,7 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { CurriculumStatus } from '@prisma/client';
+import { ContentAudience, CurriculumStatus } from '@prisma/client';
 
 export class EntitlementEntity {
+  @ApiProperty({ enum: ContentAudience })
+  audience!: ContentAudience;
   @ApiProperty()
   id!: string;
 

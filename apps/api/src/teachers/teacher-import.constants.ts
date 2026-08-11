@@ -8,7 +8,7 @@ export const MAX_IMPORT_ROWS = 2000;
 
 // The exact headers the downloadable template carries, in order. The parser matches
 // against these after normalisation, so a reordered or differently-cased file still works.
-export const IMPORT_TEMPLATE_HEADERS = ['email', 'name', 'subject_codes', 'password'] as const;
+export const IMPORT_TEMPLATE_HEADERS = ['email', 'name', 'grade_level', 'subject_codes', 'password'] as const;
 
 // `subject_codes` may be blank — a teacher can be imported before their subjects are known.
 export const REQUIRED_HEADERS = ['email', 'name'] as const;

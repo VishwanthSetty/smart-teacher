@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { Role } from '@prisma/client';
+import { ContentAudience, Role } from '@prisma/client';
 import { ContentEntitlementsService } from './content-entitlements.service';
 import { EnrollmentsService } from '../students/enrollments.service';
 import type { ActorScope } from '../common/authorization/resource-access';
+import { TeacherAssignmentsService } from '../teachers/teacher-assignments.service';
 
 // 'all' is the platform library, not "every curriculum" — SUPER_ADMIN authors the content
 // and belongs to no school, so there is no entitlement set to enumerate for them. Callers
@@ -30,6 +31,7 @@ export class ActorContentScopeService {
   constructor(
     private readonly entitlements: ContentEntitlementsService,
     private readonly enrollments: EnrollmentsService,
+    private readonly teacherAssignments: TeacherAssignmentsService,
   ) {}
 
   async resolve(actor: ActorScope): Promise<ContentScope> {
@@ -51,7 +53,26 @@ export class ActorContentScopeService {
         return [];
       }
       return entitled
-        .filter((curriculum) => curriculum.gradeLevelId === gradeLevelId)
+        .filter(
+          (curriculum) =>
+            curriculum.audience === ContentAudience.STUDENT &&
+            curriculum.gradeLevelId === gradeLevelId,
+        )
+        .map((curriculum) => curriculum.curriculumId);
+    }
+
+    if (actor.role === Role.TEACHER) {
+      const taught = await this.teacherAssignments.taughtPairsFor(actor.userId);
+      if (taught.length === 0) {
+        return entitled.map((curriculum) => curriculum.curriculumId);
+      }
+      const pairs = new Set(taught.map((pair) => pairKey(pair.gradeLevelId, pair.subjectId)));
+      return entitled
+        .filter(
+          (curriculum) =>
+            curriculum.audience === ContentAudience.TEACHER ||
+            pairs.has(pairKey(curriculum.gradeLevelId, curriculum.subjectId)),
+        )
         .map((curriculum) => curriculum.curriculumId);
     }
 
@@ -70,4 +91,8 @@ export class ActorContentScopeService {
 
     return scope.includes(curriculumId);
   }
+}
+
+function pairKey(gradeLevelId: string, subjectId: string): string {
+  return `${gradeLevelId}:${subjectId}`;
 }

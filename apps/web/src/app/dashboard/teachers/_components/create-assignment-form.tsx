@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Section, Subject } from '@smart-teacher/shared-types';
+import type { GradeLevel, Section, Subject } from '@smart-teacher/shared-types';
 
 const ALL_SECTIONS_VALUE = '';
 
@@ -10,14 +10,17 @@ export function CreateAssignmentForm({
   teacherId,
   sections,
   subjects,
+  gradeLevels,
 }: {
   teacherId: string;
   sections: Section[];
   subjects: Subject[];
+  gradeLevels: GradeLevel[];
 }) {
   const router = useRouter();
   const [sectionId, setSectionId] = useState(ALL_SECTIONS_VALUE);
   const [subjectId, setSubjectId] = useState('');
+  const [gradeLevelId, setGradeLevelId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -33,6 +36,7 @@ export function CreateAssignmentForm({
         teacherId,
         subjectId,
         ...(sectionId ? { sectionId } : {}),
+        ...(gradeLevelId ? { gradeLevelId } : {}),
       }),
     });
 
@@ -46,6 +50,7 @@ export function CreateAssignmentForm({
 
     setSectionId(ALL_SECTIONS_VALUE);
     setSubjectId('');
+    setGradeLevelId('');
     router.refresh();
   }
 
@@ -76,13 +81,32 @@ export function CreateAssignmentForm({
       </div>
 
       <div className="space-y-1">
+        <label htmlFor="assignmentGrade" className="block text-sm font-medium text-gray-700">Grade level</label>
+        <select
+          id="assignmentGrade"
+          value={gradeLevelId}
+          disabled={Boolean(sectionId)}
+          onChange={(event) => setGradeLevelId(event.target.value)}
+          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
+        >
+          <option value="">Grade not specified</option>
+          {gradeLevels.map((grade) => <option key={grade.id} value={grade.id}>{grade.name}</option>)}
+        </select>
+      </div>
+
+      <div className="space-y-1">
         <label htmlFor="assignmentSection" className="block text-sm font-medium text-gray-700">
           Section
         </label>
         <select
           id="assignmentSection"
           value={sectionId}
-          onChange={(e) => setSectionId(e.target.value)}
+          onChange={(e) => {
+            const nextSectionId = e.target.value;
+            setSectionId(nextSectionId);
+            const section = sections.find((candidate) => candidate.id === nextSectionId);
+            setGradeLevelId(section?.gradeLevelId ?? '');
+          }}
           className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
         >
           <option value={ALL_SECTIONS_VALUE}>All sections (no specific section)</option>

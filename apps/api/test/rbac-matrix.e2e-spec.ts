@@ -507,6 +507,14 @@ const MATRIX: MatrixRow[] = [
     access: { allow: [Role.SUPER_ADMIN] },
   },
 
+  { key: 'GET /admin/documents', request: { method: 'get', path: '/admin/documents' }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'GET /admin/documents/:id', request: { method: 'get', path: `/admin/documents/${MISSING_ID}` }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'POST /admin/documents', request: { method: 'post', path: '/admin/documents', body: {} }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'PATCH /admin/documents/:id', request: { method: 'patch', path: `/admin/documents/${MISSING_ID}`, body: {} }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'POST /admin/documents/:id/uploaded', request: { method: 'post', path: `/admin/documents/${MISSING_ID}/uploaded`, body: {} }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'POST /admin/documents/:id/upload-url', request: { method: 'post', path: `/admin/documents/${MISSING_ID}/upload-url`, body: {} }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'DELETE /admin/documents/:id', request: { method: 'delete', path: `/admin/documents/${MISSING_ID}` }, access: { allow: [Role.SUPER_ADMIN] } },
+
   // The transcode worker's result callback. Not JWT-authenticated and not @Public: it is
   // gated by WorkerAuthGuard's HMAC over the raw body, which the per-role loop below
   // cannot express, so its auth assertions live in transcode-callback.e2e-spec.ts.
@@ -552,6 +560,9 @@ const MATRIX: MatrixRow[] = [
     request: { method: 'get', path: `/videos/${MISSING_ID}` },
     access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] },
   },
+  { key: 'GET /documents', request: { method: 'get', path: '/documents' }, access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] } },
+  { key: 'GET /documents/:id', request: { method: 'get', path: `/documents/${MISSING_ID}` }, access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] } },
+  { key: 'GET /documents/:id/download', request: { method: 'get', path: `/documents/${MISSING_ID}/download` }, access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] } },
   {
     key: 'GET /videos/:id/playback-token',
     request: { method: 'get', path: `/videos/${MISSING_ID}/playback-token` },
@@ -567,6 +578,7 @@ const MATRIX: MatrixRow[] = [
 // entitlement management remain SUPER_ADMIN-only.
 const CONTENT_AUTHORING_AND_ENTITLEMENT_PATHS = [
   '/admin/videos',
+  '/admin/documents',
   '/admin/grade-levels',
   '/admin/subjects',
   '/entitlements',
@@ -651,7 +663,7 @@ describe('RBAC matrix (e2e)', () => {
       );
 
       // Guards against the filter silently matching nothing and passing vacuously.
-      expect(contentRows.length).toBeGreaterThanOrEqual(19);
+      expect(contentRows.length).toBeGreaterThanOrEqual(26);
       expect(
         contentRows.filter((row) => row.access.allow.includes(Role.SCHOOL_ADMIN)).map((r) => r.key),
       ).toEqual([]);
@@ -660,7 +672,7 @@ describe('RBAC matrix (e2e)', () => {
     it('denies TEACHER and STUDENT every admin endpoint', () => {
       const adminRows = gatedRows.filter((row) => pathOf(row.key).startsWith('/admin/'));
 
-      expect(adminRows.length).toBeGreaterThanOrEqual(17);
+      expect(adminRows.length).toBeGreaterThanOrEqual(24);
       expect(
         adminRows
           .filter(

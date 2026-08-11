@@ -12,19 +12,25 @@ import {
 } from '@/lib/api-client';
 import { PageHeader } from '@/components/ui/page-header';
 import { EntitlementMatrix } from './_components/entitlement-matrix';
+import { ContentAudience } from '@smart-teacher/shared-types';
 
 const ROUTE = '/dashboard/entitlements';
 
 export default async function SchoolEntitlementsPage({
   params,
+  searchParams,
 }: {
   params: { schoolId: string };
+  searchParams: { audience?: string };
 }) {
   const user = await requireUser();
   if (!canRoleAccess(user.role, ROUTE)) {
     redirect('/dashboard');
   }
   const accessToken = getAccessToken() ?? '';
+  const audience = searchParams.audience === ContentAudience.TEACHER
+    ? ContentAudience.TEACHER
+    : ContentAudience.STUDENT;
 
   const school = await apiGetSchool(accessToken, params.schoolId).catch((error) => {
     if (error instanceof ApiError && error.status === 404) {
@@ -43,7 +49,7 @@ export default async function SchoolEntitlementsPage({
     apiListActiveSubjects(accessToken),
     // The grid's cells are curricula. A high limit rather than pagination: the grid shows
     // every grade x subject at once, and that product bounds the curriculum count.
-    apiListCurricula(accessToken, { limit: 200 }),
+    apiListCurricula(accessToken, { limit: 200, audience }),
   ]);
 
   // A grant on a since-retired subject stays live (retirement blocks new grants, not held
@@ -63,12 +69,18 @@ export default async function SchoolEntitlementsPage({
         description="Curricula this school can reach. A grant covers the whole tree beneath it."
       />
 
+      <nav className="inline-flex w-fit rounded-lg border border-gray-200 bg-white p-1">
+        <Link href={`?audience=${ContentAudience.STUDENT}`} className={`rounded-md px-3 py-1.5 text-sm ${audience === ContentAudience.STUDENT ? 'bg-gray-900 text-white' : 'text-gray-600'}`}>Students</Link>
+        <Link href={`?audience=${ContentAudience.TEACHER}`} className={`rounded-md px-3 py-1.5 text-sm ${audience === ContentAudience.TEACHER ? 'bg-gray-900 text-white' : 'text-gray-600'}`}>Teachers</Link>
+      </nav>
+
       <EntitlementMatrix
         schoolId={school.id}
         gradeLevels={gradeLevels}
         subjects={subjects}
         curricula={curricula.data}
         granted={entitlements}
+        audience={audience}
       />
 
       {retiredGrantCount > 0 && (

@@ -31,6 +31,7 @@ export const PLATFORM_GLOBAL_MODELS = [
   'Curriculum',
   'ContentNode',
   'Video',
+  'Document',
   // Hangs off Video and inherits its globalness — a rendition is one encode of platform
   // content, not something a school owns.
   'VideoRendition',

@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { CurriculumStatus, Prisma, SubjectStatus } from '@prisma/client';
+import { ContentAudience, CurriculumStatus, Prisma, SubjectStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaginatedCurriculaEntity } from './entities/paginated-curricula.entity';
 import { CreateCurriculumDto } from './dto/create-curriculum.dto';
@@ -13,6 +13,7 @@ const CURRICULUM_SELECT = {
   subjectId: true,
   schemaId: true,
   status: true,
+  audience: true,
   publishedAt: true,
   gradeLevel: { select: { name: true } },
   subject: { select: { name: true } },
@@ -22,8 +23,12 @@ const CURRICULUM_SELECT = {
 
 type CurriculumRow = Prisma.CurriculumGetPayload<{ select: typeof CURRICULUM_SELECT }>;
 
-function toEntity(row: CurriculumRow, videoCount: number): CurriculumEntity {
+function toEntity(
+  row: CurriculumRow,
+  counts: { videos: number; documents: number },
+): CurriculumEntity {
   return {
+    audience: row.audience,
     id: row.id,
     gradeLevelId: row.gradeLevelId,
     gradeLevelName: row.gradeLevel.name,
@@ -34,7 +39,8 @@ function toEntity(row: CurriculumRow, videoCount: number): CurriculumEntity {
     status: row.status,
     publishedAt: row.publishedAt,
     nodeCount: row._count.nodes,
-    videoCount,
+    videoCount: counts.videos,
+    documentCount: counts.documents,
   };
 }
 
@@ -66,6 +72,7 @@ export class CurriculaService {
       ...(query.gradeLevelId ? { gradeLevelId: query.gradeLevelId } : {}),
       ...(query.subjectId ? { subjectId: query.subjectId } : {}),
       ...(query.status ? { status: query.status } : {}),
+      ...(query.audience ? { audience: query.audience } : {}),
     };
 
     const [rows, total] = await this.prisma.$transaction([
@@ -79,10 +86,12 @@ export class CurriculaService {
       this.prisma.curriculum.count({ where }),
     ]);
 
-    const videoCounts = await this.videoCountsFor(rows.map((row) => row.id));
+    const contentCounts = await this.contentCountsFor(rows.map((row) => row.id));
 
     return {
-      data: rows.map((row) => toEntity(row, videoCounts.get(row.id) ?? 0)),
+      data: rows.map((row) =>
+        toEntity(row, contentCounts.get(row.id) ?? { videos: 0, documents: 0 }),
+      ),
       meta: {
         page: query.page,
         limit: query.limit,
@@ -112,13 +121,13 @@ export class CurriculaService {
       throw new NotFoundException('Curriculum not found');
     }
 
-    const [videoCounts, entitledSchoolCount] = await Promise.all([
-      this.videoCountsFor([row.id]),
+    const [contentCounts, entitledSchoolCount] = await Promise.all([
+      this.contentCountsFor([row.id]),
       this.prisma.schoolContentEntitlement.count({ where: { curriculumId: row.id } }),
     ]);
 
     return {
-      ...toEntity(row, videoCounts.get(row.id) ?? 0),
+      ...toEntity(row, contentCounts.get(row.id) ?? { videos: 0, documents: 0 }),
       levels: row.schema.levels,
       entitledSchoolCount,
     };
@@ -152,6 +161,7 @@ export class CurriculaService {
           gradeLevelId: dto.gradeLevelId,
           subjectId: dto.subjectId,
           schemaId: dto.schemaId,
+          audience: dto.audience ?? ContentAudience.STUDENT,
         },
         select: { id: true },
       });
@@ -160,7 +170,9 @@ export class CurriculaService {
       // @@unique([gradeLevelId, subjectId]) — a curriculum IS the pair, so a duplicate is
       // a conflict rather than a second row.
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new ConflictException('A curriculum already exists for that grade level and subject');
+        throw new ConflictException(
+          'A curriculum already exists for that grade level, subject and audience',
+        );
       }
       throw error;
     }
@@ -279,15 +291,19 @@ export class CurriculaService {
     // Both FKs are onDelete: Restrict, so this would fail at the database anyway.
     // Checking here names which of the two blocked it, and archiving is the intended
     // path for a curriculum that has been in service.
-    const [entitlementCount, videoCount] = await this.prisma.$transaction([
+    const [entitlementCount, videoCount, documentCount] = await this.prisma.$transaction([
       this.prisma.schoolContentEntitlement.count({ where: { curriculumId: id } }),
       this.prisma.video.count({ where: { node: { curriculumId: id } } }),
+      this.prisma.document.count({ where: { node: { curriculumId: id } } }),
     ]);
     if (entitlementCount > 0) {
       throw new ConflictException('Schools still hold entitlements for this curriculum; archive it instead');
     }
     if (videoCount > 0) {
       throw new ConflictException('This curriculum still holds videos; archive it instead');
+    }
+    if (documentCount > 0) {
+      throw new ConflictException('This curriculum still holds documents; archive it instead');
     }
 
     // ContentNode cascades from Curriculum, so the (now video-free) tree goes with it.
@@ -301,7 +317,9 @@ export class CurriculaService {
    * nodes up to their curriculum — cheaper than a per-curriculum count in a loop, which
    * is what a page of 50 curricula would otherwise cost.
    */
-  private async videoCountsFor(curriculumIds: readonly string[]): Promise<Map<string, number>> {
+  private async contentCountsFor(
+    curriculumIds: readonly string[],
+  ): Promise<Map<string, { videos: number; documents: number }>> {
     if (curriculumIds.length === 0) {
       return new Map();
     }
@@ -314,18 +332,33 @@ export class CurriculaService {
       return new Map();
     }
 
-    const grouped = await this.prisma.video.groupBy({
-      by: ['contentNodeId'],
-      where: { contentNodeId: { in: nodes.map((node) => node.id) } },
-      _count: { _all: true },
-    });
+    const [groupedVideos, groupedDocuments] = await Promise.all([
+      this.prisma.video.groupBy({
+        by: ['contentNodeId'],
+        where: { contentNodeId: { in: nodes.map((node) => node.id) } },
+        _count: { _all: true },
+      }),
+      this.prisma.document.groupBy({
+        by: ['contentNodeId'],
+        where: { contentNodeId: { in: nodes.map((node) => node.id) } },
+        _count: { _all: true },
+      }),
+    ]);
 
     const curriculumByNode = new Map(nodes.map((node) => [node.id, node.curriculumId]));
-    const counts = new Map<string, number>();
-    for (const group of grouped) {
+    const counts = new Map<string, { videos: number; documents: number }>();
+    for (const group of groupedVideos) {
       const curriculumId = curriculumByNode.get(group.contentNodeId);
       if (curriculumId !== undefined) {
-        counts.set(curriculumId, (counts.get(curriculumId) ?? 0) + group._count._all);
+        const current = counts.get(curriculumId) ?? { videos: 0, documents: 0 };
+        counts.set(curriculumId, { ...current, videos: current.videos + group._count._all });
+      }
+    }
+    for (const group of groupedDocuments) {
+      const curriculumId = curriculumByNode.get(group.contentNodeId);
+      if (curriculumId !== undefined) {
+        const current = counts.get(curriculumId) ?? { videos: 0, documents: 0 };
+        counts.set(curriculumId, { ...current, documents: current.documents + group._count._all });
       }
     }
     return counts;

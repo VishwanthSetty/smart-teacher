@@ -16,7 +16,13 @@ const ASSIGNMENT_INCLUDE = {
   user: { select: { id: true, name: true, email: true } },
   subject: { select: { id: true, name: true, code: true } },
   section: { select: { id: true, name: true, gradeLevel: { select: { id: true, name: true } } } },
+  gradeLevel: { select: { id: true, name: true } },
 } as const;
+
+export interface TaughtPair {
+  gradeLevelId: string;
+  subjectId: string;
+}
 
 type AssignmentWithRelations = Prisma.TeacherAssignmentGetPayload<{ include: typeof ASSIGNMENT_INCLUDE }>;
 
@@ -31,8 +37,8 @@ function toEntity(assignment: AssignmentWithRelations): TeacherAssignmentEntity 
     subjectCode: assignment.subject.code,
     sectionId: assignment.section?.id ?? null,
     sectionName: assignment.section?.name ?? null,
-    gradeLevelId: assignment.section?.gradeLevel.id ?? null,
-    gradeLevelName: assignment.section?.gradeLevel.name ?? null,
+    gradeLevelId: assignment.gradeLevel?.id ?? null,
+    gradeLevelName: assignment.gradeLevel?.name ?? null,
     sectionLabel: assignment.section ? `${assignment.section.gradeLevel.name} - ${assignment.section.name}` : null,
     createdAt: assignment.createdAt,
   };
@@ -47,6 +53,7 @@ export class TeacherAssignmentsService {
       ...(query.teacherId ? { userId: query.teacherId } : {}),
       ...(query.sectionId ? { sectionId: query.sectionId } : {}),
       ...(query.subjectId ? { subjectId: query.subjectId } : {}),
+      ...(query.gradeLevelId ? { gradeLevelId: query.gradeLevelId } : {}),
     };
 
     const assignments = await this.prisma.teacherAssignment.findMany({
@@ -59,6 +66,17 @@ export class TeacherAssignmentsService {
       ],
     });
     return assignments.map(toEntity);
+  }
+
+  async taughtPairsFor(userId: string): Promise<TaughtPair[]> {
+    const rows = await this.prisma.teacherAssignment.findMany({
+      where: { userId, gradeLevelId: { not: null } },
+      select: { gradeLevelId: true, subjectId: true },
+      distinct: ['gradeLevelId', 'subjectId'],
+    });
+    return rows.flatMap((row) =>
+      row.gradeLevelId === null ? [] : [{ gradeLevelId: row.gradeLevelId, subjectId: row.subjectId }],
+    );
   }
 
   async create(dto: CreateTeacherAssignmentDto, actor: AuthenticatedUser): Promise<TeacherAssignmentEntity> {
@@ -82,11 +100,19 @@ export class TeacherAssignmentsService {
       throw new BadRequestException('That subject has been retired and cannot be assigned');
     }
 
+    let gradeLevelId = dto.gradeLevelId ?? null;
     if (dto.sectionId) {
-      const section = await this.prisma.section.findUnique({ where: { id: dto.sectionId } });
+      const section = await this.prisma.section.findUnique({
+        where: { id: dto.sectionId },
+        select: { gradeLevelId: true },
+      });
       if (!section) {
         throw new NotFoundException('Section not found');
       }
+      if (dto.gradeLevelId && dto.gradeLevelId !== section.gradeLevelId) {
+        throw new BadRequestException('That grade level does not match the section');
+      }
+      gradeLevelId = section.gradeLevelId;
 
       // Named ahead of the insert so the conflict message can identify the incumbent —
       // the partial unique index below is the actual guarantee, this is just a better
@@ -100,6 +126,11 @@ export class TeacherAssignmentsService {
           `${existing.user.name} is already assigned to this subject for this section`,
         );
       }
+    } else if (gradeLevelId) {
+      const gradeExists = await this.prisma.gradeLevel.count({ where: { id: gradeLevelId } });
+      if (gradeExists === 0) {
+        throw new NotFoundException('Grade level not found');
+      }
     }
 
     try {
@@ -112,6 +143,7 @@ export class TeacherAssignmentsService {
           userId: dto.teacherId,
           subjectId: dto.subjectId,
           sectionId: dto.sectionId ?? null,
+          gradeLevelId,
         },
         include: ASSIGNMENT_INCLUDE,
       });

@@ -2,6 +2,23 @@ import { plainToInstance, Transform } from 'class-transformer';
 import { IsBoolean, IsIn, IsInt, IsString, Max, Min, MinLength, validateSync } from 'class-validator';
 
 class EnvironmentVariables {
+  // Node's own build-mode flag (framework perf switches, `npm prune --omit=dev`, etc).
+  // Not set by any .env file — Node/npm/Jest/Docker set it in the process env ahead of
+  // ConfigModule, so this only types and validates it. Deliberately NOT what gates
+  // Swagger below: apps/api/Dockerfile bakes NODE_ENV=production into every image it
+  // builds, including the one `docker compose up` runs for local dev — so app-level
+  // "which deployment is this" decisions use APP_ENV instead, which stays whatever a
+  // given environment's compose/deploy config sets it to independent of the build mode.
+  @IsIn(['development', 'test', 'production'])
+  NODE_ENV: 'development' | 'test' | 'production' = 'development';
+
+  // Deployment role — gates environment-sensitive app behaviour that must never be
+  // per-handler (e.g. whether Swagger is mounted, cf. main.ts). Defaults to
+  // 'development' so a bare `docker compose up` (the local dev stack) keeps docs on;
+  // a real production deployment must set APP_ENV=production explicitly.
+  @IsIn(['development', 'test', 'production'])
+  APP_ENV: 'development' | 'test' | 'production' = 'development';
+
   @IsInt()
   @Min(0)
   @Max(65535)

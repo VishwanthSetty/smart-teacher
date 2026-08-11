@@ -85,7 +85,7 @@ describe('Teacher bulk import (e2e)', () => {
       .expect(200);
 
     expect(response.headers['content-type']).toContain('text/csv');
-    expect(response.text).toContain('email,name,subject_codes');
+    expect(response.text).toContain('email,name,grade_level,subject_codes');
   });
 
   describe('preview', () => {
@@ -239,7 +239,7 @@ describe('Teacher bulk import (e2e)', () => {
         .expect(200);
 
       expect(response.headers['content-type']).toContain('text/csv');
-      expect(response.text).toContain('row_number,email,name,subject_codes,password,errors');
+      expect(response.text).toContain('row_number,email,name,grade_level,subject_codes,password,errors');
       expect(response.text).toContain('Duplicate of row 3 in this file.');
       expect(response.text).toContain('already exists in this school');
       expect(response.text).toContain('canonical subject list');

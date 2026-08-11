@@ -21,4 +21,9 @@ export class CreateTeacherAssignmentDto {
   @IsOptional()
   @IsString()
   sectionId?: string;
+
+  @ApiProperty({ required: false, description: 'Grade taught; derived from section when present' })
+  @IsOptional()
+  @IsString()
+  gradeLevelId?: string;
 }

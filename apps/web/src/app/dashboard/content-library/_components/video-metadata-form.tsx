@@ -76,7 +76,7 @@ export function VideoMetadataForm(props: Props) {
     />
     <label className="grid gap-1 text-sm">Ingest source retention<select name="retainSource" defaultValue={video.retainSource === null ? 'default' : String(video.retainSource)} className="rounded border px-3 py-2"><option value="default">Use global default</option><option value="true">Retain source</option><option value="false">Delete after success</option></select></label>
     <p className="text-xs text-gray-500">Deleting the source saves storage but disables Retry for this video.</p>
-    {impact && <p className="rounded bg-amber-50 p-3 text-sm">The new curriculum reaches {impact.schoolCount} schools and {impact.studentCount} active students, alongside {impact.videoCount} existing videos.</p>}
+    {impact && <p className="rounded bg-amber-50 p-3 text-sm">The new curriculum reaches {impact.schoolCount} schools, {impact.studentCount} active students, and {impact.teacherCount} assigned teachers, alongside {impact.videoCount} videos and {impact.documentCount} documents.</p>}
     {error && <p className="text-sm text-red-600">{error}</p>}<button disabled={busy} className="w-fit rounded bg-gray-900 px-4 py-2 text-white disabled:opacity-50">{busy ? 'Saving…' : 'Save metadata'}</button>
   </form>;
 }

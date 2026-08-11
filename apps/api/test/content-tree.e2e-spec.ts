@@ -3,7 +3,11 @@ import { Role } from '@prisma/client';
 import request from 'supertest';
 import { createE2eApp } from './utils/e2e-app';
 import { loginAllRoles, login, SEED_PASSWORD } from './utils/login';
-import { seedContentFixtures, ENTITLED_VIDEO_TITLE } from './utils/content-fixtures';
+import {
+  ENTITLED_DOCUMENT_TITLE,
+  ENTITLED_VIDEO_TITLE,
+  seedContentFixtures,
+} from './utils/content-fixtures';
 
 const MISSING_ID = 'missing-00000000000000000000000';
 
@@ -14,7 +18,9 @@ interface TreeNode {
   canHoldContent: boolean;
   children: TreeNode[];
   videos: Array<{ id: string; title: string }>;
+  documents: Array<{ id: string; title: string }>;
   videoCountDeep: number;
+  documentCountDeep: number;
 }
 
 /**
@@ -22,15 +28,16 @@ interface TreeNode {
  * structure the operator defined".
  *
  * The fixtures are deliberately asymmetric and every assertion here leans on that:
- * demo-school holds one published curriculum (Grade 5 Mathematics) plus one DRAFT grant,
- * and demo-school-b holds nothing. Granting more in content-fixtures.ts would make these
- * pass vacuously.
+ * demo-school holds one published curriculum per audience plus one DRAFT grant, and
+ * demo-school-b holds nothing. Granting more in content-fixtures.ts would make these pass
+ * vacuously.
  */
 describe('Content tree (e2e)', () => {
   let app: INestApplication;
   let tokens: Record<Role, string>;
   let teacherB: string;
   let g5MathsCurriculumId: string;
+  let g5MathsTeacherCurriculumId: string;
   let g5ScienceCurriculumId: string;
   let g6MathsCurriculumId: string;
   let draftCurriculumId: string;
@@ -41,6 +48,7 @@ describe('Content tree (e2e)', () => {
   beforeAll(async () => {
     const fixtures = await seedContentFixtures();
     g5MathsCurriculumId = fixtures.g5MathsCurriculumId;
+    g5MathsTeacherCurriculumId = fixtures.g5MathsTeacherCurriculumId;
     g5ScienceCurriculumId = fixtures.g5ScienceCurriculumId;
     g6MathsCurriculumId = fixtures.g6MathsCurriculumId;
     draftCurriculumId = fixtures.draftCurriculumId;
@@ -56,13 +64,13 @@ describe('Content tree (e2e)', () => {
 
   describe('GET /curricula', () => {
     it('lists exactly the published curricula the school is entitled to', async () => {
-      const res = await get('/curricula', tokens[Role.TEACHER]).expect(200);
+      const res = await get('/curricula?audience=STUDENT', tokens[Role.TEACHER]).expect(200);
 
       expect(res.body.map((c: { id: string }) => c.id)).toEqual([g5MathsCurriculumId]);
     });
 
     it("lists the school's entitled curriculum for a SCHOOL_ADMIN", async () => {
-      const res = await get('/curricula', tokens[Role.SCHOOL_ADMIN]).expect(200);
+      const res = await get('/curricula?audience=STUDENT', tokens[Role.SCHOOL_ADMIN]).expect(200);
 
       expect(res.body.map((c: { id: string }) => c.id)).toEqual([g5MathsCurriculumId]);
     });
@@ -84,12 +92,19 @@ describe('Content tree (e2e)', () => {
     });
 
     it('labels each curriculum with its grade level and subject', async () => {
-      const res = await get('/curricula', tokens[Role.TEACHER]).expect(200);
+      const res = await get('/curricula?audience=STUDENT', tokens[Role.TEACHER]).expect(200);
 
       expect(res.body[0]).toMatchObject({
         gradeLevelName: 'Grade 5',
         subjectName: 'Mathematics',
       });
+    });
+
+    it('uses audience only as a browse filter for teachers and school admins', async () => {
+      const teacher = await get('/curricula?audience=TEACHER', tokens[Role.TEACHER]).expect(200);
+      const admin = await get('/curricula?audience=TEACHER', tokens[Role.SCHOOL_ADMIN]).expect(200);
+      expect(teacher.body.map((c: { id: string }) => c.id)).toEqual([g5MathsTeacherCurriculumId]);
+      expect(admin.body.map((c: { id: string }) => c.id)).toEqual([g5MathsTeacherCurriculumId]);
     });
 
     // SUPER_ADMIN authors through /admin/curricula rather than this tenant-scoped surface.
@@ -123,6 +138,7 @@ describe('Content tree (e2e)', () => {
       if (!topic) throw new Error('Entitled topic fixture missing from content tree');
       expect(topic).toMatchObject({ title: 'Topic 1.1', levelName: 'Topic', canHoldContent: true });
       expect(topic.videos.map((video) => video.title)).toEqual([ENTITLED_VIDEO_TITLE]);
+      expect(topic.documents.map((document) => document.title)).toEqual([ENTITLED_DOCUMENT_TITLE]);
     });
 
     // So a client can grey out an empty branch without walking the subtree itself.
@@ -131,7 +147,9 @@ describe('Content tree (e2e)', () => {
 
       const nodes = res.body.nodes as TreeNode[];
       expect(nodes[0].videoCountDeep).toBe(1);
+      expect(nodes[0].documentCountDeep).toBe(1);
       expect(nodes[0].videos).toEqual([]);
+      expect(nodes[0].documents).toEqual([]);
     });
 
     // 404, never 403: an unentitled curriculum must be indistinguishable from one that
@@ -160,9 +178,14 @@ describe('Content tree (e2e)', () => {
     // The student is enrolled in Grade 5 - A, and demo-school's only published grant is
     // the Grade 5 curriculum — so grade narrowing and entitlement narrowing agree here.
     it("shows a student the curricula for their enrolled grade level", async () => {
-      const res = await get('/curricula', tokens[Role.STUDENT]).expect(200);
+      const res = await get('/curricula?audience=STUDENT', tokens[Role.STUDENT]).expect(200);
 
       expect(res.body.map((c: { id: string }) => c.id)).toEqual([g5MathsCurriculumId]);
+    });
+
+    it('returns no teacher-audience curricula to a student', async () => {
+      const res = await get('/curricula?audience=TEACHER', tokens[Role.STUDENT]).expect(200);
+      expect(res.body).toEqual([]);
     });
 
     it('lets a student open the tree for their own grade level', async () => {

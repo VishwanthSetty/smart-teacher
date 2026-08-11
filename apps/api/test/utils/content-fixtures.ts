@@ -1,4 +1,10 @@
-import { CurriculumStatus, PrismaClient, VideoStatus } from '@prisma/client';
+import {
+  ContentAudience,
+  CurriculumStatus,
+  DocumentStatus,
+  PrismaClient,
+  VideoStatus,
+} from '@prisma/client';
 import { DEMO_SCHOOL_SLUG, DEMO_SCHOOL_B_SLUG } from './global-setup';
 
 /**
@@ -19,6 +25,10 @@ import { DEMO_SCHOOL_SLUG, DEMO_SCHOOL_B_SLUG } from './global-setup';
 export const ENTITLED_VIDEO_TITLE = 'Grade 5 Maths — Fractions';
 export const SCIENCE_VIDEO_TITLE = 'Grade 5 Science — The Water Cycle';
 export const UNENTITLED_VIDEO_TITLE = 'Grade 6 Maths — Ratios';
+export const TEACHER_VIDEO_TITLE = 'Grade 5 Maths — Teaching Fractions';
+export const ENTITLED_DOCUMENT_TITLE = 'Grade 5 Maths — Fraction Worksheet';
+export const TEACHER_DOCUMENT_TITLE = 'Grade 5 Maths — Fraction Lesson Plan';
+export const UNENTITLED_DOCUMENT_TITLE = 'Grade 6 Maths — Ratios Worksheet';
 
 export const STANDARD_SCHEMA_CODE = 'chapter-topic';
 
@@ -28,14 +38,18 @@ export interface ContentFixtures {
   mathsId: string;
   scienceId: string;
   schemaId: string;
-  /** demo-school's only entitlement. */
+  /** demo-school's published student entitlement. */
   g5MathsCurriculumId: string;
+  /** demo-school's published teacher entitlement. */
+  g5MathsTeacherCurriculumId: string;
   g5ScienceCurriculumId: string;
   g6MathsCurriculumId: string;
+  g6ScienceTeacherCurriculumId: string;
   /** Published-but-unentitled and draft curricula, for the two negative cases. */
   draftCurriculumId: string;
   /** A content-holding (Topic) node under the entitled curriculum. */
   g5MathsTopicId: string;
+  g5MathsTeacherTopicId: string;
   /** A non-content-holding (Chapter) node under the same curriculum. */
   g5MathsChapterId: string;
   schoolId: string;
@@ -96,26 +110,33 @@ export async function seedContentFixtures(): Promise<ContentFixtures> {
       },
     });
 
-    // Three published curricula plus one DRAFT. The draft is the fixture that proves
+    // Five published curricula plus one DRAFT. The draft is the fixture that proves
     // publication gating: demo-school is granted it, and must still not see it.
     const curriculumSpecs = [
-      { key: 'g5Maths', grade: grade5, subject: maths, status: CurriculumStatus.PUBLISHED },
-      { key: 'g5Science', grade: grade5, subject: science, status: CurriculumStatus.PUBLISHED },
-      { key: 'g6Maths', grade: grade6, subject: maths, status: CurriculumStatus.PUBLISHED },
-      { key: 'draft', grade: grade6, subject: science, status: CurriculumStatus.DRAFT },
+      { key: 'g5Maths', grade: grade5, subject: maths, audience: ContentAudience.STUDENT, status: CurriculumStatus.PUBLISHED },
+      { key: 'g5Science', grade: grade5, subject: science, audience: ContentAudience.STUDENT, status: CurriculumStatus.PUBLISHED },
+      { key: 'g6Maths', grade: grade6, subject: maths, audience: ContentAudience.STUDENT, status: CurriculumStatus.PUBLISHED },
+      { key: 'draft', grade: grade6, subject: science, audience: ContentAudience.STUDENT, status: CurriculumStatus.DRAFT },
+      { key: 'g5MathsTeacher', grade: grade5, subject: maths, audience: ContentAudience.TEACHER, status: CurriculumStatus.PUBLISHED },
+      { key: 'g6ScienceTeacher', grade: grade6, subject: science, audience: ContentAudience.TEACHER, status: CurriculumStatus.PUBLISHED },
     ] as const;
 
     const curricula = new Map<string, string>();
     for (const spec of curriculumSpecs) {
       const row = await prisma.curriculum.upsert({
         where: {
-          gradeLevelId_subjectId: { gradeLevelId: spec.grade.id, subjectId: spec.subject.id },
+          gradeLevelId_subjectId_audience: {
+            gradeLevelId: spec.grade.id,
+            subjectId: spec.subject.id,
+            audience: spec.audience,
+          },
         },
         // Converged, not created-if-absent: a run that left a curriculum unpublished (or a
         // dev DB edited by hand) would otherwise silently empty the entitled library.
         update: {
           schemaId: schema.id,
           status: spec.status,
+          audience: spec.audience,
           publishedAt: spec.status === CurriculumStatus.PUBLISHED ? new Date() : null,
         },
         create: {
@@ -123,6 +144,7 @@ export async function seedContentFixtures(): Promise<ContentFixtures> {
           subjectId: spec.subject.id,
           schemaId: schema.id,
           status: spec.status,
+          audience: spec.audience,
           publishedAt: spec.status === CurriculumStatus.PUBLISHED ? new Date() : null,
         },
       });
@@ -158,6 +180,7 @@ export async function seedContentFixtures(): Promise<ContentFixtures> {
       { externalId: 'demo-g5-maths-01', title: ENTITLED_VIDEO_TITLE, curriculumKey: 'g5Maths' },
       { externalId: 'demo-g5-sci-01', title: SCIENCE_VIDEO_TITLE, curriculumKey: 'g5Science' },
       { externalId: 'demo-g6-maths-01', title: UNENTITLED_VIDEO_TITLE, curriculumKey: 'g6Maths' },
+      { externalId: 'demo-g5-maths-teacher-01', title: TEACHER_VIDEO_TITLE, curriculumKey: 'g5MathsTeacher' },
     ];
 
     for (const video of videos) {
@@ -199,14 +222,42 @@ export async function seedContentFixtures(): Promise<ContentFixtures> {
       });
     }
 
-    // Deliberately asymmetric: demo-school is entitled to exactly one *published*
-    // curriculum and demo-school-b to none. That asymmetry is the fixture the F-02
+    const documents = [
+      { title: ENTITLED_DOCUMENT_TITLE, curriculumKey: 'g5Maths' },
+      { title: TEACHER_DOCUMENT_TITLE, curriculumKey: 'g5MathsTeacher' },
+      { title: UNENTITLED_DOCUMENT_TITLE, curriculumKey: 'g6Maths' },
+    ];
+    for (const document of documents) {
+      const topicId = nodes.get(document.curriculumKey)?.topicId;
+      if (topicId === undefined) {
+        throw new Error(`No topic node seeded for ${document.curriculumKey}`);
+      }
+      const data = {
+        title: document.title,
+        status: DocumentStatus.READY,
+        sizeBytes: 4096,
+        contentType: 'application/pdf',
+        failureReason: null,
+        contentNodeId: topicId,
+      };
+      const existing = await prisma.document.findFirst({ where: { title: document.title } });
+      const row = existing
+        ? await prisma.document.update({ where: { id: existing.id }, data })
+        : await prisma.document.create({ data });
+      await prisma.document.update({
+        where: { id: row.id },
+        data: { sourceKey: `documents/${row.id}/source.pdf` },
+      });
+    }
+
+    // Deliberately asymmetric: demo-school is entitled to exactly one published curriculum
+    // per audience and demo-school-b to none. That asymmetry is the fixture the F-02
     // entitlement tests assert against — granting everything here would make them pass
     // vacuously.
     //
     // The DRAFT grant is deliberate too: it proves that holding an entitlement is not
     // enough, because ContentEntitlementsService filters reads to PUBLISHED.
-    const grants = [curricula.get('g5Maths'), curricula.get('draft')];
+    const grants = [curricula.get('g5Maths'), curricula.get('g5MathsTeacher'), curricula.get('draft')];
     for (const curriculumId of grants) {
       if (curriculumId === undefined) {
         throw new Error('Curriculum fixture missing before granting');
@@ -275,10 +326,13 @@ export async function seedContentFixtures(): Promise<ContentFixtures> {
       scienceId: science.id,
       schemaId: schema.id,
       g5MathsCurriculumId: required(curricula, 'g5Maths'),
+      g5MathsTeacherCurriculumId: required(curricula, 'g5MathsTeacher'),
       g5ScienceCurriculumId: required(curricula, 'g5Science'),
       g6MathsCurriculumId: required(curricula, 'g6Maths'),
+      g6ScienceTeacherCurriculumId: required(curricula, 'g6ScienceTeacher'),
       draftCurriculumId: required(curricula, 'draft'),
       g5MathsTopicId: g5MathsNodes.topicId,
+      g5MathsTeacherTopicId: requiredNodes(nodes, 'g5MathsTeacher').topicId,
       g5MathsChapterId: g5MathsNodes.chapterId,
       schoolId: school.id,
       schoolBId: schoolB.id,
@@ -355,4 +409,15 @@ function required(curricula: ReadonlyMap<string, string>, key: string): string {
     throw new Error(`Curriculum fixture "${key}" was not seeded`);
   }
   return id;
+}
+
+function requiredNodes(
+  nodes: ReadonlyMap<string, { chapterId: string; topicId: string }>,
+  key: string,
+): { chapterId: string; topicId: string } {
+  const result = nodes.get(key);
+  if (result === undefined) {
+    throw new Error(`Content nodes for curriculum fixture "${key}" were not seeded`);
+  }
+  return result;
 }

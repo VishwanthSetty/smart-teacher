@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import type { Curriculum, Entitlement, GradeLevel, Subject } from '@smart-teacher/shared-types';
+import type { ContentAudience, Curriculum, Entitlement, GradeLevel, Subject } from '@smart-teacher/shared-types';
 import { EmptyState } from '@/components/ui/empty-state';
 
 function pairKey(gradeLevelId: string, subjectId: string): string {
@@ -56,12 +56,14 @@ export function EntitlementMatrix({
   subjects,
   curricula,
   granted,
+  audience,
 }: {
   schoolId: string;
   gradeLevels: GradeLevel[];
   subjects: Subject[];
   curricula: Curriculum[];
   granted: Entitlement[];
+  audience: ContentAudience;
 }) {
   const router = useRouter();
 
@@ -81,8 +83,8 @@ export function EntitlementMatrix({
   }, [curricula]);
 
   const initialIds = useMemo(
-    () => new Set(granted.map((entitlement) => entitlement.curriculumId)),
-    [granted],
+    () => new Set(granted.filter((entitlement) => entitlement.audience === audience).map((entitlement) => entitlement.curriculumId)),
+    [granted, audience],
   );
 
   const [selected, setSelected] = useState<Set<string>>(() => new Set(initialIds));
@@ -174,7 +176,10 @@ export function EntitlementMatrix({
     const response = await fetch(`/api/schools/${schoolId}/entitlements`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ curriculumIds: grantableIds.filter((id) => selected.has(id)) }),
+      body: JSON.stringify({
+        curriculumIds: grantableIds.filter((id) => selected.has(id)),
+        audience,
+      }),
     });
 
     setIsSaving(false);

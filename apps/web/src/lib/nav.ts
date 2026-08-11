@@ -92,8 +92,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
   {
     label: 'My Subjects',
     labelByRole: {
-      [Role.SCHOOL_ADMIN]: 'Video Library',
-      [Role.TEACHER]: 'Video Library',
+      [Role.SCHOOL_ADMIN]: 'Library',
+      [Role.TEACHER]: 'Library',
     },
     href: STUDENT_HOME,
     icon: Video,

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { CurriculumStatus, Prisma, SubjectStatus } from '@prisma/client';
+import { ContentAudience, CurriculumStatus, Prisma, SubjectStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ContentEntitlementsAdminService } from './content-entitlements-admin.service';
 
@@ -11,12 +11,14 @@ const ROW = {
   grantedAt: new Date('2026-01-01T00:00:00Z'),
   curriculum: {
     status: CurriculumStatus.PUBLISHED,
+    audience: ContentAudience.STUDENT,
     gradeLevel: { id: 'g5', name: 'Grade 5' },
     subject: { id: 'maths', name: 'Mathematics', status: SubjectStatus.ACTIVE },
   },
 };
 
 const ENTITY = {
+  audience: ContentAudience.STUDENT,
   id: 'e1',
   schoolId: 'school-a',
   curriculumId: 'c-g5-maths',
@@ -185,11 +187,12 @@ describe('ContentEntitlementsAdminService', () => {
     // Shape of the currentRows read inside replaceForSchool's first transaction — distinct
     // from ENTITLEMENT_SELECT (used by the final listForSchool call), which is why the two
     // fixtures below are named differently.
-    const currentRow = (
+  const currentRow = (
       id: string,
       curriculumId: string,
       subjectStatus: SubjectStatus = SubjectStatus.ACTIVE,
-    ) => ({ id, curriculumId, curriculum: { subject: { status: subjectStatus } } });
+      audience: ContentAudience = ContentAudience.STUDENT,
+    ) => ({ id, curriculumId, curriculum: { audience, subject: { status: subjectStatus } } });
 
     it('grants the additions and revokes the removals in one save', async () => {
       prisma.curriculum.findMany.mockResolvedValue([curriculum('c-g5-science')]);
@@ -241,6 +244,29 @@ describe('ContentEntitlementsAdminService', () => {
       expect(prisma.schoolContentEntitlement.createMany).toHaveBeenCalledWith({
         data: [],
         skipDuplicates: true,
+      });
+    });
+
+    it('does not revoke grants from the other audience when saving one tab', async () => {
+      prisma.schoolContentEntitlement.findMany
+        .mockResolvedValueOnce([
+          currentRow('student-entitlement', 'student-curriculum'),
+          currentRow(
+            'teacher-entitlement',
+            'teacher-curriculum',
+            SubjectStatus.ACTIVE,
+            ContentAudience.TEACHER,
+          ),
+        ])
+        .mockResolvedValueOnce([ROW]);
+
+      await service.replaceForSchool('school-a', {
+        curriculumIds: [],
+        audience: ContentAudience.TEACHER,
+      });
+
+      expect(prisma.schoolContentEntitlement.deleteMany).toHaveBeenCalledWith({
+        where: { schoolId: 'school-a', id: { in: ['teacher-entitlement'] } },
       });
     });
 

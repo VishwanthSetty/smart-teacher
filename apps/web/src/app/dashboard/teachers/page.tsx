@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { Role, type User } from '@smart-teacher/shared-types';
 import { canRoleAccess } from '@/lib/nav';
 import { getAccessToken, requireUser } from '@/lib/session';
-import { apiListActiveSubjects, apiListUsers } from '@/lib/api-client';
+import { apiListActiveSubjects, apiListGradeLevels, apiListUsers } from '@/lib/api-client';
 import { PageHeader } from '@/components/ui/page-header';
 import { BulkImportPanel } from './_components/bulk-import-panel';
 import { CreateTeacherForm } from './_components/create-teacher-form';
@@ -27,10 +27,11 @@ export default async function TeachersPage() {
 
   // GET /admin/users is already tenant-scoped and SCHOOL_ADMIN-only; filtering by role
   // here avoids adding a query parameter (and an RBAC matrix change) for one caller.
-  const [users, subjects] = await Promise.all([
+  const [users, subjects, gradeLevels] = await Promise.all([
     apiListUsers(accessToken),
     // Only the admin's onboarding form needs the subject list.
     isAdmin ? apiListActiveSubjects(accessToken) : Promise.resolve([]),
+    isAdmin ? apiListGradeLevels(accessToken) : Promise.resolve([]),
   ]);
   const teachers = users.filter((candidate) => candidate.role === Role.TEACHER);
 
@@ -44,7 +45,7 @@ export default async function TeachersPage() {
       {isAdmin && (
         <>
           <BulkImportPanel />
-          <CreateTeacherForm subjects={subjects} />
+          <CreateTeacherForm subjects={subjects} gradeLevels={gradeLevels} />
         </>
       )}
 

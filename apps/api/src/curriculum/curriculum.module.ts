@@ -9,6 +9,7 @@ import { CurriculaService } from './curricula.service';
 import { CurriculumAccessPolicy } from './curriculum-access.policy';
 import { CurriculumSchemasAdminController } from './curriculum-schemas-admin.controller';
 import { CurriculumSchemasService } from './curriculum-schemas.service';
+import { ContentNodeUsabilityService } from './content-node-usability.service';
 
 @Module({
   // For ActorContentScopeService, which answers "which curricula may this actor reach?"
@@ -27,8 +28,10 @@ import { CurriculumSchemasService } from './curriculum-schemas.service';
     ContentNodesService,
     ContentTreeService,
     CurriculumAccessPolicy,
+    ContentNodeUsabilityService,
   ],
-  // Nothing is exported yet: no other feature reads curricula through a service today —
-  // VideosService validates its destination node with a direct Prisma read of its own.
+  // Video and document ingest share the curriculum-owned destination-node rules through
+  // this service; the authoring services themselves remain internal to the module.
+  exports: [ContentNodeUsabilityService],
 })
 export class CurriculumModule {}

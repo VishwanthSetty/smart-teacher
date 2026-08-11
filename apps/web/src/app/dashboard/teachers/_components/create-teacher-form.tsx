@@ -2,9 +2,9 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Subject } from '@smart-teacher/shared-types';
+import type { GradeLevel, Subject } from '@smart-teacher/shared-types';
 
-export function CreateTeacherForm({ subjects }: { subjects: Subject[] }) {
+export function CreateTeacherForm({ subjects, gradeLevels }: { subjects: Subject[]; gradeLevels: GradeLevel[] }) {
   const router = useRouter();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -12,14 +12,24 @@ export function CreateTeacherForm({ subjects }: { subjects: Subject[] }) {
   const [password, setPassword] = useState('');
   const [sendCredentialsEmail, setSendCredentialsEmail] = useState(false);
   const [createdPassword, setCreatedPassword] = useState<string | null>(null);
-  const [subjectIds, setSubjectIds] = useState<string[]>([]);
+  const [assignments, setAssignments] = useState<Array<{ subjectId: string; gradeLevelId?: string }>>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   function toggleSubject(subjectId: string) {
-    setSubjectIds((current) =>
-      current.includes(subjectId) ? current.filter((id) => id !== subjectId) : [...current, subjectId],
+    setAssignments((current) =>
+      current.some((assignment) => assignment.subjectId === subjectId)
+        ? current.filter((assignment) => assignment.subjectId !== subjectId)
+        : [...current, { subjectId }],
     );
+  }
+
+  function setGrade(subjectId: string, gradeLevelId: string) {
+    setAssignments((current) => current.map((assignment) =>
+      assignment.subjectId === subjectId
+        ? { subjectId, ...(gradeLevelId ? { gradeLevelId } : {}) }
+        : assignment,
+    ));
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -37,7 +47,7 @@ export function CreateTeacherForm({ subjects }: { subjects: Subject[] }) {
         email,
         password: password || undefined,
         sendCredentialsEmail,
-        subjectIds: subjectIds.length > 0 ? subjectIds : undefined,
+        assignments: assignments.length > 0 ? assignments : undefined,
       }),
     });
 
@@ -56,7 +66,7 @@ export function CreateTeacherForm({ subjects }: { subjects: Subject[] }) {
     setEmail('');
     setPassword('');
     setSendCredentialsEmail(false);
-    setSubjectIds([]);
+    setAssignments([]);
     router.refresh();
   }
 
@@ -140,17 +150,29 @@ export function CreateTeacherForm({ subjects }: { subjects: Subject[] }) {
           {subjects.length === 0 ? (
             <p className="text-sm text-gray-500">No subjects available yet.</p>
           ) : (
-            <div className="flex flex-wrap gap-3">
+            <div className="grid gap-2">
               {subjects.map((subject) => (
-                <label key={subject.id} className="flex items-center gap-2 text-sm text-gray-700">
+                <div key={subject.id} className="flex items-center gap-3 text-sm text-gray-700">
+                  <label className="flex flex-1 items-center gap-2">
                   <input
                     type="checkbox"
-                    checked={subjectIds.includes(subject.id)}
+                    checked={assignments.some((assignment) => assignment.subjectId === subject.id)}
                     onChange={() => toggleSubject(subject.id)}
                     className="rounded border-gray-300"
                   />
                   {subject.name}
-                </label>
+                  </label>
+                  <select
+                    aria-label={`Grade level for ${subject.name}`}
+                    disabled={!assignments.some((assignment) => assignment.subjectId === subject.id)}
+                    value={assignments.find((assignment) => assignment.subjectId === subject.id)?.gradeLevelId ?? ''}
+                    onChange={(event) => setGrade(subject.id, event.target.value)}
+                    className="rounded-md border border-gray-300 px-2 py-1 disabled:opacity-50"
+                  >
+                    <option value="">Grade not specified</option>
+                    {gradeLevels.map((grade) => <option key={grade.id} value={grade.id}>{grade.name}</option>)}
+                  </select>
+                </div>
               ))}
             </div>
           )}

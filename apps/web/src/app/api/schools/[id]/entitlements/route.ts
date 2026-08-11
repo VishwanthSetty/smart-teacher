@@ -29,10 +29,10 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });
   }
 
-  const { curriculumIds } = await request.json();
+  const { curriculumIds, audience } = await request.json();
 
   try {
-    const entitlements = await apiReplaceSchoolEntitlements(accessToken, params.id, curriculumIds);
+    const entitlements = await apiReplaceSchoolEntitlements(accessToken, params.id, curriculumIds, audience);
     return NextResponse.json(entitlements);
   } catch (error) {
     const status = error instanceof ApiError ? error.status : 500;

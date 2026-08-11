@@ -195,16 +195,19 @@ export class ContentNodesService {
     // A node holding videos must land somewhere that may hold them. Checking the whole
     // subtree, not just the moved node: a chapter dragged one level down takes its topics
     // with it, and those are the rows that actually carry the videos.
-    const movedWithVideos = await this.prisma.contentNode.findMany({
-      where: { id: { in: subtree.map((member) => member.id) }, videos: { some: {} } },
+    const movedWithContent = await this.prisma.contentNode.findMany({
+      where: {
+        id: { in: subtree.map((member) => member.id) },
+        OR: [{ videos: { some: {} } }, { documents: { some: {} } }],
+      },
       select: { depth: true },
     });
-    const blocked = movedWithVideos.find(
+    const blocked = movedWithContent.find(
       (member) => levelAt(levels, member.depth + depthDelta)?.canHoldContent !== true,
     );
     if (blocked !== undefined) {
       throw new ConflictException(
-        'The moved branch holds videos at a level that cannot hold content',
+        'The moved branch holds content at a level that cannot hold content',
       );
     }
 
@@ -252,11 +255,16 @@ export class ContentNodesService {
     // ContentNode cascades down its self-relation, so deleting a branch takes its
     // descendants silently. Refusing while any of them holds a video is what stops that
     // cascade from destroying content an operator did not know was down there.
-    const videoCount = await this.prisma.video.count({
-      where: { node: { curriculumId: node.curriculumId, path: { startsWith: node.path } } },
-    });
-    if (videoCount > 0) {
-      throw new ConflictException('This branch still holds videos and cannot be deleted');
+    const [videoCount, documentCount] = await this.prisma.$transaction([
+      this.prisma.video.count({
+        where: { node: { curriculumId: node.curriculumId, path: { startsWith: node.path } } },
+      }),
+      this.prisma.document.count({
+        where: { node: { curriculumId: node.curriculumId, path: { startsWith: node.path } } },
+      }),
+    ]);
+    if (videoCount > 0 || documentCount > 0) {
+      throw new ConflictException('This branch still holds content and cannot be deleted');
     }
 
     await this.prisma.contentNode.delete({ where: { id } });

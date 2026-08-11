@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, VideoStatus } from '@prisma/client';
+import { ContentAudience, DocumentStatus, Prisma, VideoStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActorContentScopeService } from '../entitlements/actor-content-scope.service';
 import { actorScopeOf, requireReadable } from '../common/authorization/resource-access';
@@ -8,6 +8,7 @@ import { CurriculumAccessPolicy } from './curriculum-access.policy';
 import { CurriculumEntity } from './entities/curriculum.entity';
 import {
   ContentTreeEntity,
+  ContentTreeDocumentEntity,
   ContentTreeNodeEntity,
   ContentTreeVideoEntity,
 } from './entities/content-tree.entity';
@@ -56,7 +57,7 @@ export class ContentTreeService {
     if (curriculum === null) {
       throw new NotFoundException('Curriculum not found');
     }
-    return this.assemble(curriculum, { readyVideosOnly: false });
+    return this.assemble(curriculum, { readyContentOnly: false });
   }
 
   /**
@@ -80,22 +81,29 @@ export class ContentTreeService {
     }
     // Students and teachers only ever see transcoded content, the same READY narrowing
     // every other school-facing video read applies.
-    return this.assemble(curriculum, { readyVideosOnly: true });
+    return this.assemble(curriculum, { readyContentOnly: true });
   }
 
   /** The curriculum cards a school-facing user may open. */
-  async findAllVisibleTo(actor: AuthenticatedUser): Promise<CurriculumEntity[]> {
+  async findAllVisibleTo(
+    actor: AuthenticatedUser,
+    audience?: ContentAudience,
+  ): Promise<CurriculumEntity[]> {
     const scope = await this.contentScope.resolve(actorScopeOf(actor));
 
     const rows = await this.prisma.curriculum.findMany({
       // 'all' is SUPER_ADMIN, who authors the library and is not narrowed by entitlement.
-      where: scope === 'all' ? {} : { id: { in: scope } },
+      where: {
+        ...(scope === 'all' ? {} : { id: { in: scope } }),
+        ...(audience ? { audience } : {}),
+      },
       select: {
         id: true,
         gradeLevelId: true,
         subjectId: true,
         schemaId: true,
         status: true,
+        audience: true,
         publishedAt: true,
         gradeLevel: { select: { name: true } },
         subject: { select: { name: true } },
@@ -122,16 +130,35 @@ export class ContentTreeService {
             where: { contentNodeId: { in: nodes.map((node) => node.id) }, status: VideoStatus.READY },
             _count: { _all: true },
           });
+    const groupedDocuments =
+      nodes.length === 0
+        ? []
+        : await this.prisma.document.groupBy({
+            by: ['contentNodeId'],
+            where: {
+              contentNodeId: { in: nodes.map((node) => node.id) },
+              status: DocumentStatus.READY,
+            },
+            _count: { _all: true },
+          });
     const curriculumByNode = new Map(nodes.map((node) => [node.id, node.curriculumId]));
     const videoCounts = new Map<string, number>();
+    const documentCounts = new Map<string, number>();
     for (const group of grouped) {
       const curriculumId = curriculumByNode.get(group.contentNodeId);
       if (curriculumId !== undefined) {
         videoCounts.set(curriculumId, (videoCounts.get(curriculumId) ?? 0) + group._count._all);
       }
     }
+    for (const group of groupedDocuments) {
+      const curriculumId = curriculumByNode.get(group.contentNodeId);
+      if (curriculumId !== undefined) {
+        documentCounts.set(curriculumId, (documentCounts.get(curriculumId) ?? 0) + group._count._all);
+      }
+    }
 
     return rows.map((row) => ({
+      audience: row.audience,
       id: row.id,
       gradeLevelId: row.gradeLevelId,
       gradeLevelName: row.gradeLevel.name,
@@ -143,6 +170,7 @@ export class ContentTreeService {
       publishedAt: row.publishedAt,
       nodeCount: row._count.nodes,
       videoCount: videoCounts.get(row.id) ?? 0,
+      documentCount: documentCounts.get(row.id) ?? 0,
     }));
   }
 
@@ -154,6 +182,7 @@ export class ContentTreeService {
         gradeLevelId: true,
         subjectId: true,
         status: true,
+        audience: true,
         gradeLevel: { select: { name: true } },
         subject: { select: { name: true } },
         schema: {
@@ -165,9 +194,9 @@ export class ContentTreeService {
 
   private async assemble(
     curriculum: NonNullable<Awaited<ReturnType<ContentTreeService['loadCurriculum']>>>,
-    options: { readyVideosOnly: boolean },
+    options: { readyContentOnly: boolean },
   ): Promise<ContentTreeEntity> {
-    const [nodes, videos] = await this.prisma.$transaction([
+    const [nodes, videos, documents] = await this.prisma.$transaction([
       this.prisma.contentNode.findMany({
         where: { curriculumId: curriculum.id },
         select: TREE_NODE_SELECT,
@@ -176,13 +205,27 @@ export class ContentTreeService {
       this.prisma.video.findMany({
         where: {
           node: { curriculumId: curriculum.id },
-          ...(options.readyVideosOnly ? { status: VideoStatus.READY } : {}),
+          ...(options.readyContentOnly ? { status: VideoStatus.READY } : {}),
         },
         select: {
           id: true,
           title: true,
           description: true,
           durationSecs: true,
+          status: true,
+          contentNodeId: true,
+        },
+        orderBy: { title: 'asc' },
+      }),
+      this.prisma.document.findMany({
+        where: {
+          node: { curriculumId: curriculum.id },
+          ...(options.readyContentOnly ? { status: DocumentStatus.READY } : {}),
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
           status: true,
           contentNodeId: true,
         },
@@ -198,19 +241,32 @@ export class ContentTreeService {
         title: video.title,
         description: video.description,
         durationSecs: video.durationSecs,
-        ...(options.readyVideosOnly ? {} : { status: video.status }),
+        ...(options.readyContentOnly ? {} : { status: video.status }),
       });
       videosByNode.set(video.contentNodeId, bucket);
     }
 
+    const documentsByNode = new Map<string, ContentTreeDocumentEntity[]>();
+    for (const document of documents) {
+      const bucket = documentsByNode.get(document.contentNodeId) ?? [];
+      bucket.push({
+        id: document.id,
+        title: document.title,
+        description: document.description,
+        ...(options.readyContentOnly ? {} : { status: document.status }),
+      });
+      documentsByNode.set(document.contentNodeId, bucket);
+    }
+
     return {
+      audience: curriculum.audience,
       curriculumId: curriculum.id,
       gradeLevelId: curriculum.gradeLevelId,
       gradeLevelName: curriculum.gradeLevel.name,
       subjectId: curriculum.subjectId,
       subjectName: curriculum.subject.name,
       status: curriculum.status,
-      nodes: nest(nodes, curriculum.schema.levels, videosByNode),
+      nodes: nest(nodes, curriculum.schema.levels, videosByNode, documentsByNode),
     };
   }
 }
@@ -226,6 +282,7 @@ function nest(
   rows: readonly TreeNodeRow[],
   levels: readonly SchemaLevel[],
   videosByNode: ReadonlyMap<string, ContentTreeVideoEntity[]>,
+  documentsByNode: ReadonlyMap<string, ContentTreeDocumentEntity[]>,
 ): ContentTreeNodeEntity[] {
   const byId = new Map<string, ContentTreeNodeEntity>();
   const roots: ContentTreeNodeEntity[] = [];
@@ -233,6 +290,7 @@ function nest(
   for (const row of rows) {
     const level = levels.find((candidate) => candidate.depth === row.depth);
     const videos = videosByNode.get(row.id) ?? [];
+    const documents = documentsByNode.get(row.id) ?? [];
     const node: ContentTreeNodeEntity = {
       id: row.id,
       curriculumId: row.curriculumId,
@@ -246,7 +304,9 @@ function nest(
       sortOrder: row.sortOrder,
       children: [],
       videos,
+      documents,
       videoCountDeep: videos.length,
+      documentCountDeep: documents.length,
     };
     byId.set(row.id, node);
 
@@ -268,6 +328,7 @@ function nest(
     const parent = byId.get(node.parentId);
     if (parent !== undefined) {
       parent.videoCountDeep += node.videoCountDeep;
+      parent.documentCountDeep += node.documentCountDeep;
     }
   }
 

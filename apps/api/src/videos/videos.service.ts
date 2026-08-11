@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { CurriculumStatus, Prisma, SubjectStatus, VideoStatus } from '@prisma/client';
+import { Prisma, VideoStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActorContentScopeService } from '../entitlements/actor-content-scope.service';
 import { actorScopeOf, requireReadable } from '../common/authorization/resource-access';
@@ -24,6 +24,7 @@ import { AdminVideoDetailEntity } from './entities/admin-video-detail.entity';
 import { PaginatedAdminVideosEntity } from './entities/paginated-admin-videos.entity';
 import { VideoUploadTicketEntity } from './entities/video-upload-ticket.entity';
 import { isAcceptedVideoContentType, MAX_VIDEO_BYTES } from './video-ingest.constants';
+import { ContentNodeUsabilityService } from '../curriculum/content-node-usability.service';
 
 // The node join is what supplies the entitlement key now that a video carries no grade
 // level or subject of its own. It is a to-one chain between platform-global models
@@ -114,6 +115,7 @@ export class VideosService {
     private readonly storage: StorageService,
     private readonly transcodeQueue: TranscodeQueue,
     private readonly reconciler: TranscodeReconcilerService,
+    private readonly nodeUsability: ContentNodeUsabilityService,
   ) {}
 
   // One fetch, then the policy decides — a video the caller isn't entitled to is
@@ -292,7 +294,7 @@ export class VideosService {
   // is no tenant to stamp — but the taxonomy FKs are caller-supplied and must be proven
   // to exist, or Prisma's raw foreign-key violation would surface as a 500.
   async create(dto: CreateVideoDto): Promise<VideoUploadTicketEntity> {
-    await this.assertNodeUsable(dto.contentNodeId);
+    await this.nodeUsability.assertNodeUsable(dto.contentNodeId, 'Videos');
 
     // The object key derives from the generated id, so the row must exist before the
     // key does. Both writes go in one transaction: a row stranded without a sourceKey
@@ -332,7 +334,7 @@ export class VideosService {
     // Re-filing can move a video into a different curriculum, which changes which schools
     // see it — so the destination is validated exactly as it was at create time.
     if (dto.contentNodeId !== undefined && dto.contentNodeId !== current.contentNodeId) {
-      await this.assertNodeUsable(dto.contentNodeId);
+      await this.nodeUsability.assertNodeUsable(dto.contentNodeId, 'Videos');
     }
     await this.prisma.video.update({
       where: { id },
@@ -547,44 +549,6 @@ export class VideosService {
   ): Promise<VideoUploadTicketEntity> {
     const upload = await this.storage.createPresignedUpload(sourceKey, contentType);
     return { video, uploadUrl: upload.url, expiresInSecs: upload.expiresInSecs };
-  }
-
-  /**
-   * Proves the destination node can actually hold this video.
-   *
-   * The caller supplies the node id, so it must be shown to exist or Prisma's raw
-   * foreign-key violation would surface as a 500. Beyond existence there are three rules,
-   * all enforced here rather than left to the UI: the node's level must be marked
-   * content-holding (videos hang off topics, not chapters), the curriculum must not be
-   * archived, and its subject must not be retired.
-   */
-  private async assertNodeUsable(contentNodeId: string): Promise<void> {
-    const node = await this.prisma.contentNode.findUnique({
-      where: { id: contentNodeId },
-      select: {
-        depth: true,
-        curriculum: {
-          select: {
-            status: true,
-            subject: { select: { status: true } },
-            schema: { select: { levels: { select: { depth: true, canHoldContent: true } } } },
-          },
-        },
-      },
-    });
-    if (node === null) {
-      throw new NotFoundException('Content node not found');
-    }
-    if (node.curriculum.subject.status === SubjectStatus.RETIRED) {
-      throw new ConflictException('This subject is retired and cannot take new content');
-    }
-    if (node.curriculum.status === CurriculumStatus.ARCHIVED) {
-      throw new ConflictException('This curriculum is archived and cannot take new content');
-    }
-    const level = node.curriculum.schema.levels.find((candidate) => candidate.depth === node.depth);
-    if (level === undefined || !level.canHoldContent) {
-      throw new ConflictException('Videos cannot be attached at this level of the curriculum');
-    }
   }
 
   /**

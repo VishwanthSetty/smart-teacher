@@ -1,6 +1,18 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
-import { ArrayUnique, IsArray, IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsArray, IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator';
+
+export class CreateTeacherAssignmentInputDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  subjectId!: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  gradeLevelId?: string;
+}
 
 export class CreateTeacherDto {
   @ApiProperty({ example: 'Priya' })
@@ -33,14 +45,14 @@ export class CreateTeacherDto {
   sendCredentialsEmail?: boolean;
 
   @ApiProperty({
-    type: [String],
+    type: [CreateTeacherAssignmentInputDto],
     required: false,
     description:
       'Subject ids the teacher is qualified to teach, school-wide (no section) — the same shape the CSV import produces.',
   })
   @IsOptional()
   @IsArray()
-  @ArrayUnique()
-  @IsString({ each: true })
-  subjectIds?: string[];
+  @ValidateNested({ each: true })
+  @Type(() => CreateTeacherAssignmentInputDto)
+  assignments?: CreateTeacherAssignmentInputDto[];
 }

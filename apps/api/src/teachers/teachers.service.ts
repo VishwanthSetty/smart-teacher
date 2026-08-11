@@ -40,7 +40,11 @@ export class TeachersService {
       throw new NotFoundException('School not found');
     }
 
-    const subjectIds = [...new Set(dto.subjectIds ?? [])];
+    const assignments = [...new Map((dto.assignments ?? []).map((assignment) => [
+      `${assignment.subjectId}:${assignment.gradeLevelId ?? ''}`,
+      assignment,
+    ])).values()];
+    const subjectIds = [...new Set(assignments.map((assignment) => assignment.subjectId))];
     const subjects =
       subjectIds.length > 0
         ? await this.prisma.subject.findMany({ where: { id: { in: subjectIds } } })
@@ -54,6 +58,17 @@ export class TeachersService {
         `Subject(s) have been retired and cannot be assigned: ${retired.map((subject) => subject.code).join(', ')}`,
       );
     }
+
+    const gradeLevelIds = [
+      ...new Set(assignments.flatMap((assignment) => assignment.gradeLevelId ? [assignment.gradeLevelId] : [])),
+    ];
+    const gradeLevels = gradeLevelIds.length > 0
+      ? await this.prisma.gradeLevel.findMany({ where: { id: { in: gradeLevelIds } } })
+      : [];
+    if (gradeLevels.length !== gradeLevelIds.length) {
+      throw new NotFoundException('Grade level not found');
+    }
+    const gradesById = new Map(gradeLevels.map((grade) => [grade.id, grade]));
 
     const { password, passwordHash } = await this.passwordsService.resolve(dto.password, dto.email);
     const name = `${dto.firstName} ${dto.lastName}`;
@@ -78,9 +93,14 @@ export class TeachersService {
 
         // School-wide "qualified to teach" grants, sectionId null — the same shape the
         // teacher CSV import produces, same table TeacherAssignmentsService writes to.
-        if (subjectIds.length > 0) {
+        if (assignments.length > 0) {
           await tx.teacherAssignment.createMany({
-            data: subjectIds.map((subjectId) => ({ schoolId, userId: user.id, subjectId })),
+            data: assignments.map((assignment) => ({
+              schoolId,
+              userId: user.id,
+              subjectId: assignment.subjectId,
+              gradeLevelId: assignment.gradeLevelId ?? null,
+            })),
           });
         }
 
@@ -119,7 +139,18 @@ export class TeachersService {
       status: teacher.status,
       activatedAt: teacher.activatedAt,
       createdAt: teacher.createdAt,
-      subjects: subjects.map((subject) => ({ id: subject.id, name: subject.name, code: subject.code })),
+      subjects: assignments.flatMap((assignment) => {
+        const subject = subjects.find((candidate) => candidate.id === assignment.subjectId);
+        if (!subject) return [];
+        const grade = assignment.gradeLevelId ? gradesById.get(assignment.gradeLevelId) : undefined;
+        return [{
+          id: subject.id,
+          name: subject.name,
+          code: subject.code,
+          gradeLevelId: grade?.id ?? null,
+          gradeLevelName: grade?.name ?? null,
+        }];
+      }),
     };
   }
 

@@ -13,6 +13,7 @@ const ENTITLEMENT_SELECT = {
   curriculum: {
     select: {
       status: true,
+      audience: true,
       gradeLevel: { select: { id: true, name: true } },
       subject: { select: { id: true, name: true, status: true } },
     },
@@ -23,6 +24,7 @@ type EntitlementRow = Prisma.SchoolContentEntitlementGetPayload<{ select: typeof
 
 function toEntity(row: EntitlementRow): EntitlementEntity {
   return {
+    audience: row.curriculum.audience,
     id: row.id,
     schoolId: row.schoolId,
     curriculumId: row.curriculumId,
@@ -119,7 +121,7 @@ export class ContentEntitlementsAdminService {
         select: {
           id: true,
           curriculumId: true,
-          curriculum: { select: { subject: { select: { status: true } } } },
+          curriculum: { select: { audience: true, subject: { select: { status: true } } } },
         },
       }),
     ]);
@@ -153,7 +155,10 @@ export class ContentEntitlementsAdminService {
     // matching the comment on grant(): "grants already held stay live".
     const desiredSet = new Set(desired);
     const toRevoke = currentRows.filter(
-      (row) => row.curriculum.subject.status !== SubjectStatus.RETIRED && !desiredSet.has(row.curriculumId),
+      (row) =>
+        row.curriculum.subject.status !== SubjectStatus.RETIRED &&
+        (dto.audience === undefined || row.curriculum.audience === dto.audience) &&
+        !desiredSet.has(row.curriculumId),
     );
     const toGrant = desired.filter((id) => !currentIds.has(id));
 

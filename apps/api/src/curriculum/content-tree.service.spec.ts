@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
-import { CurriculumStatus, Role, VideoStatus } from '@prisma/client';
+import { ContentAudience, CurriculumStatus, Role, VideoStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActorContentScopeService } from '../entitlements/actor-content-scope.service';
 import { ContentTreeService } from './content-tree.service';
@@ -20,6 +20,7 @@ const CURRICULUM = {
   gradeLevelId: 'g5',
   subjectId: 'maths',
   status: CurriculumStatus.PUBLISHED,
+  audience: ContentAudience.STUDENT,
   gradeLevel: { name: 'Grade 5' },
   subject: { name: 'Mathematics' },
   schema: {
@@ -74,6 +75,7 @@ describe('ContentTreeService', () => {
     curriculum: { findUnique: jest.Mock; findMany: jest.Mock };
     contentNode: { findMany: jest.Mock };
     video: { findMany: jest.Mock; groupBy: jest.Mock };
+    document: { findMany: jest.Mock; groupBy: jest.Mock };
     $transaction: jest.Mock;
   };
   let contentScope: { resolve: jest.Mock; includes: jest.Mock };
@@ -86,6 +88,7 @@ describe('ContentTreeService', () => {
       },
       contentNode: { findMany: jest.fn().mockResolvedValue(NODES) },
       video: { findMany: jest.fn().mockResolvedValue([]), groupBy: jest.fn().mockResolvedValue([]) },
+      document: { findMany: jest.fn().mockResolvedValue([]), groupBy: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
     };
     contentScope = { resolve: jest.fn().mockResolvedValue(['curriculum-1']), includes: jest.fn() };

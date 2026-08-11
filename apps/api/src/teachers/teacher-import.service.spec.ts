@@ -32,6 +32,7 @@ describe('TeacherImportService', () => {
   let prisma: {
     user: { findMany: jest.Mock; createManyAndReturn: jest.Mock };
     subject: { findMany: jest.Mock };
+    gradeLevel: { findMany: jest.Mock };
     school: { findUnique: jest.Mock };
     teacherAssignment: { createMany: jest.Mock };
     teacherImportBatch: {
@@ -49,6 +50,7 @@ describe('TeacherImportService', () => {
     prisma = {
       user: { findMany: jest.fn().mockResolvedValue([]), createManyAndReturn: jest.fn() },
       subject: { findMany: jest.fn().mockResolvedValue([]) },
+      gradeLevel: { findMany: jest.fn().mockResolvedValue([]) },
       school: { findUnique: jest.fn().mockResolvedValue({ name: 'Demo', slug: 'demo' }) },
       teacherAssignment: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
       teacherImportBatch: {
@@ -149,6 +151,16 @@ describe('TeacherImportService', () => {
       expect(preview.invalidRows[0].errors[0].code).toBe('RETIRED_SUBJECT');
     });
 
+    it('reports an unknown grade level without inventing a taxonomy row', async () => {
+      const preview = await service.createBatch(
+        upload('email,name,grade_level,subject_codes', 'asha@example.com,Asha Rao,Grade 99,'),
+        ACTOR,
+      );
+
+      expect(preview.invalidRows[0].errors[0].code).toBe('UNKNOWN_GRADE_LEVEL');
+      expect(preview.validCount).toBe(0);
+    });
+
     it('prunes stale draft batches on upload', async () => {
       await service.createBatch(upload(HEADER, 'asha@example.com,Asha Rao,'), ACTOR);
 
@@ -219,7 +231,7 @@ describe('TeacherImportService', () => {
       await service.confirmBatch('batch-1', ACTOR);
 
       expect(prisma.teacherAssignment.createMany).toHaveBeenCalledWith({
-        data: [{ schoolId: 'school-1', userId: 'user-1', subjectId: 'sub-maths' }],
+        data: [{ schoolId: 'school-1', userId: 'user-1', subjectId: 'sub-maths', gradeLevelId: null }],
         skipDuplicates: true,
       });
       // Both calls went through the single interactive transaction the service opened.
@@ -317,8 +329,8 @@ describe('TeacherImportService', () => {
 
       const csv = await service.buildErrorReport('batch-1');
 
-      expect(csv).toContain('row_number,email,name,subject_codes,password,errors');
-      expect(csv).toContain('4,bad@example.com,Bad Row,art');
+      expect(csv).toContain('row_number,email,name,grade_level,subject_codes,password,errors');
+      expect(csv).toContain('4,bad@example.com,Bad Row,,art');
       expect(csv).toContain('Subject code(s) not in the list: art.');
     });
   });

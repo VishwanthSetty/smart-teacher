@@ -121,6 +121,22 @@ export enum CurriculumStatus {
   ARCHIVED = 'ARCHIVED',
 }
 
+// Mirrors the `ContentAudience` enum in apps/api/prisma/schema.prisma.
+export enum ContentAudience {
+  STUDENT = 'STUDENT',
+  TEACHER = 'TEACHER',
+}
+
+// Mirrors the `DocumentStatus` enum in apps/api/prisma/schema.prisma.
+export enum DocumentStatus {
+  UPLOADING = 'UPLOADING',
+  READY = 'READY',
+  FAILED = 'FAILED',
+}
+
+export const ACCEPTED_DOCUMENT_CONTENT_TYPES = ['application/pdf'] as const;
+export const MAX_DOCUMENT_BYTES = 50 * 1024 * 1024;
+
 // One level in a curriculum's vocabulary. `depth` is 1-based and counted below the
 // grade/subject spine, so depth 1 is the first authored level (typically "Chapter").
 export interface CurriculumLevel {
@@ -147,6 +163,7 @@ export interface CurriculumSchema {
 // entitlement points at, the root of the content tree, and where the level vocabulary is
 // bound.
 export interface Curriculum {
+  audience: ContentAudience;
   id: string;
   gradeLevelId: string;
   gradeLevelName: string;
@@ -158,6 +175,7 @@ export interface Curriculum {
   publishedAt: string | null;
   nodeCount: number;
   videoCount: number;
+  documentCount: number;
 }
 
 // The builder's view: everything in Curriculum plus the level vocabulary, so the UI can
@@ -195,12 +213,22 @@ export interface ContentTreeVideo {
 export interface ContentTreeNode extends ContentNode {
   children: ContentTreeNode[];
   videos: ContentTreeVideo[];
+  documents: ContentTreeDocument[];
   // Videos in this node AND everything beneath it, so an empty branch can be hidden
   // without walking the subtree.
   videoCountDeep: number;
+  documentCountDeep: number;
+}
+
+export interface ContentTreeDocument {
+  id: string;
+  title: string;
+  description: string | null;
+  status?: DocumentStatus;
 }
 
 export interface ContentTree {
+  audience: ContentAudience;
   curriculumId: string;
   gradeLevelId: string;
   gradeLevelName: string;
@@ -234,6 +262,7 @@ export interface CreateCurriculumInput {
   gradeLevelId: string;
   subjectId: string;
   schemaId: string;
+  audience?: ContentAudience;
 }
 
 export interface UpdateCurriculumInput {
@@ -243,6 +272,7 @@ export interface UpdateCurriculumInput {
 }
 
 export interface ListCurriculaQuery {
+  audience?: ContentAudience;
   gradeLevelId?: string;
   subjectId?: string;
   status?: CurriculumStatus;
@@ -336,12 +366,51 @@ export interface PlaybackToken {
 }
 
 export interface ContentImpact {
+  audience: ContentAudience;
   curriculumId: string;
   gradeLevelId: string;
   subjectId: string;
   schoolCount: number;
   studentCount: number;
   videoCount: number;
+  documentCount: number;
+  teacherCount: number;
+}
+
+export interface Document {
+  id: string;
+  title: string;
+  description: string | null;
+  contentNodeId: string;
+  contentNodeTitle: string;
+  curriculumId: string;
+  gradeLevelId: string;
+  subjectId: string;
+}
+
+export interface AdminDocument extends Document {
+  status: DocumentStatus;
+  sizeBytes: number | null;
+  contentType: string | null;
+  failureReason: string | null;
+  createdAt: string;
+}
+
+export interface AdminDocumentDetail extends AdminDocument {
+  updatedAt: string;
+  sourceKey: string | null;
+}
+
+export interface DocumentUploadTicket {
+  document: AdminDocument;
+  uploadUrl: string;
+  expiresInSecs: number;
+}
+
+export interface DocumentDownload {
+  url: string;
+  expiresInSecs: number;
+  fileName: string;
 }
 
 export interface UpdateVideoInput {
@@ -391,8 +460,8 @@ export interface Section {
 }
 
 // Mirrors TeacherAssignmentEntity in apps/api/src/teachers/entities/teacher-assignment.entity.ts.
-// sectionId/sectionName/gradeLevelId/gradeLevelName/sectionLabel are all null together for
-// a school-wide "teaches this subject" grant (the shape the teacher CSV import produces).
+// A section-less assignment may still carry a grade; sectionLabel is present only when
+// the assignment is pinned to a concrete section.
 export interface TeacherAssignment {
   id: string;
   teacherId: string;
@@ -413,6 +482,7 @@ export interface TeacherAssignment {
 // One row is a school's licence to reach a whole curriculum — the unit
 // ActorContentScopeService resolves every content read against.
 export interface Entitlement {
+  audience: ContentAudience;
   id: string;
   schoolId: string;
   curriculumId: string;
@@ -453,6 +523,17 @@ export interface TeacherSubject {
   id: string;
   name: string;
   code: string;
+  gradeLevelId: string | null;
+  gradeLevelName: string | null;
+}
+
+export interface CreateTeacherInput {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password?: string;
+  sendCredentialsEmail?: boolean;
+  assignments?: Array<{ subjectId: string; gradeLevelId?: string }>;
 }
 
 // Mirrors TeacherEntity in apps/api/src/teachers/entities/teacher.entity.ts.
@@ -481,6 +562,7 @@ export type TeacherImportErrorCode =
   | 'DUPLICATE_EXISTING'
   | 'UNKNOWN_SUBJECT'
   | 'RETIRED_SUBJECT'
+  | 'UNKNOWN_GRADE_LEVEL'
   | 'PASSWORD_TOO_SHORT'
   | 'PASSWORD_TOO_LONG'
   | 'PASSWORD_MATCHES_EMAIL';
@@ -496,6 +578,7 @@ export interface TeacherImportRowError {
   email: string;
   name: string;
   subjectCodes: string;
+  gradeLevelName: string;
   errors: TeacherImportRowIssue[];
 }
 
@@ -505,6 +588,7 @@ export interface TeacherImportRow {
   name: string;
   subjectCodes: string[];
   rawSubjectCodes: string;
+  gradeLevelName: string;
   hasPassword: boolean;
 }
 

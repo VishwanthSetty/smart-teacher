@@ -11,7 +11,7 @@ export class ContentImpactService {
   async get(curriculumId: string): Promise<ContentImpactEntity> {
     const curriculum = await this.prisma.curriculum.findUnique({
       where: { id: curriculumId },
-      select: { id: true, gradeLevelId: true, subjectId: true },
+      select: { id: true, gradeLevelId: true, subjectId: true, audience: true },
     });
     if (curriculum === null) {
       throw new NotFoundException('Curriculum not found');
@@ -22,7 +22,7 @@ export class ContentImpactService {
       select: { schoolId: true },
     });
     const schoolIds = entitlements.map(({ schoolId }) => schoolId);
-    const [studentCount, videoCount] = await this.prisma.$transaction([
+    const [studentCount, teacherCount, videoCount, documentCount] = await this.prisma.$transaction([
       this.prisma.enrollment.count({
         where: {
           schoolId: { in: schoolIds },
@@ -30,15 +30,26 @@ export class ContentImpactService {
           section: { gradeLevelId: curriculum.gradeLevelId },
         },
       }),
+      this.prisma.teacherAssignment.count({
+        where: {
+          schoolId: { in: schoolIds },
+          gradeLevelId: curriculum.gradeLevelId,
+          subjectId: curriculum.subjectId,
+        },
+      }),
       this.prisma.video.count({ where: { node: { curriculumId } } }),
+      this.prisma.document.count({ where: { node: { curriculumId } } }),
     ]);
     return {
+      audience: curriculum.audience,
       curriculumId: curriculum.id,
       gradeLevelId: curriculum.gradeLevelId,
       subjectId: curriculum.subjectId,
       schoolCount: schoolIds.length,
       studentCount,
       videoCount,
+      documentCount,
+      teacherCount,
     };
   }
 }

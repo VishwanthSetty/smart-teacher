@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { CurriculumStatus, Prisma, SubjectStatus } from '@prisma/client';
+import { ContentAudience, CurriculumStatus, Prisma, SubjectStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CurriculaService } from './curricula.service';
 
@@ -10,6 +10,7 @@ const DETAIL_ROW = {
   subjectId: 'maths',
   schemaId: 'schema-1',
   status: CurriculumStatus.DRAFT,
+  audience: ContentAudience.STUDENT,
   publishedAt: null,
   gradeLevel: { name: 'Grade 5' },
   subject: { name: 'Mathematics' },
@@ -39,6 +40,7 @@ describe('CurriculaService', () => {
     subject: { findUnique: jest.Mock };
     contentNode: { findMany: jest.Mock; findFirst: jest.Mock };
     video: { count: jest.Mock; groupBy: jest.Mock };
+    document: { count: jest.Mock; groupBy: jest.Mock };
     schoolContentEntitlement: { count: jest.Mock };
     $transaction: jest.Mock;
   };
@@ -64,6 +66,7 @@ describe('CurriculaService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
       },
       video: { count: jest.fn().mockResolvedValue(0), groupBy: jest.fn().mockResolvedValue([]) },
+      document: { count: jest.fn().mockResolvedValue(0), groupBy: jest.fn().mockResolvedValue([]) },
       schoolContentEntitlement: { count: jest.fn().mockResolvedValue(0) },
       $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
     };
@@ -115,7 +118,7 @@ describe('CurriculaService', () => {
       await service.create(dto);
 
       expect(prisma.curriculum.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: dto }),
+        expect.objectContaining({ data: { ...dto, audience: ContentAudience.STUDENT } }),
       );
     });
 

@@ -1,13 +1,14 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ArrowLeft, BookOpen, GraduationCap, Video } from 'lucide-react';
+import { ArrowLeft, BookOpen, FileText, GraduationCap, Video } from 'lucide-react';
 import { VideoStatus } from '@smart-teacher/shared-types';
-import { apiListActiveSubjects, apiListAdminGradeLevels, apiListAdminVideos, apiListCurricula } from '@/lib/api-client';
+import { apiListActiveSubjects, apiListAdminDocuments, apiListAdminGradeLevels, apiListAdminVideos, apiListCurricula } from '@/lib/api-client';
 import { canRoleAccess } from '@/lib/nav';
 import { getAccessToken, requireUser } from '@/lib/session';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { VideoIngestPanel } from './_components/video-ingest-panel';
+import { DocumentIngestPanel } from './_components/document-ingest-panel';
 
 const ROUTE = '/dashboard/content-library';
 const STATUS_CLASS: Record<VideoStatus, string> = {
@@ -21,7 +22,7 @@ const STATUS_CLASS: Record<VideoStatus, string> = {
 // the real filtered query, so it stays exact regardless of catalogue size.
 const CATALOG_SCAN_LIMIT = 100;
 
-interface SearchParams { status?: VideoStatus; gradeLevelId?: string; subjectId?: string; search?: string; page?: string }
+interface SearchParams { kind?: 'videos' | 'documents'; status?: VideoStatus; gradeLevelId?: string; subjectId?: string; search?: string; page?: string }
 
 function buildHref(base: SearchParams, changes: Partial<SearchParams>): string {
   const params = new URLSearchParams();
@@ -44,6 +45,7 @@ export default async function ContentLibraryPage({ searchParams }: { searchParam
   const user = await requireUser();
   if (!canRoleAccess(user.role, ROUTE)) redirect('/dashboard');
   const accessToken = getAccessToken() ?? '';
+  const kind = searchParams.kind === 'documents' ? 'documents' : 'videos';
 
   const [gradeLevels, subjects, curricula] = await Promise.all([
     apiListAdminGradeLevels(accessToken),
@@ -68,12 +70,18 @@ export default async function ContentLibraryPage({ searchParams }: { searchParam
     page: subjectId ? page : 1,
     limit: subjectId ? 20 : CATALOG_SCAN_LIMIT,
   });
+  const documents = await apiListAdminDocuments(accessToken, { limit: 100 });
   const scanTruncated = !subjectId && result.meta.total > result.data.length;
 
   return <div className="flex flex-col gap-6">
-    <PageHeader title="Content Library" description="Find, inspect, preview, correct, and retire platform videos." />
-    <VideoIngestPanel curricula={curricula.data} />
+    <PageHeader title="Content Library" description="Find, inspect, and manage platform videos and PDF documents." />
+    <nav className="inline-flex w-fit rounded-lg border border-gray-200 bg-white p-1 text-sm" aria-label="Content type">
+      <Link href={`${ROUTE}?kind=videos`} className={`rounded-md px-3 py-1.5 ${kind === 'videos' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Videos</Link>
+      <Link href={`${ROUTE}?kind=documents`} className={`rounded-md px-3 py-1.5 ${kind === 'documents' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Documents</Link>
+    </nav>
+    {kind === 'videos' ? <VideoIngestPanel curricula={curricula.data} /> : <DocumentIngestPanel curricula={curricula.data} />}
 
+    {kind === 'videos' && <>
     <div className="flex flex-wrap items-center gap-4">
       {gradeLevelId && (
         <Link
@@ -178,5 +186,14 @@ export default async function ContentLibraryPage({ searchParams }: { searchParam
         </>
       )
     )}
+    </>}
+    {kind === 'documents' && <section className="grid gap-3" aria-labelledby="documents-heading">
+      <h2 id="documents-heading" className="text-lg font-semibold">Documents</h2>
+      {documents.data.length === 0 ? (
+        <EmptyState icon={<FileText className="h-8 w-8" aria-hidden="true" />} title="No documents yet" description="Upload the first PDF using the panel above." />
+      ) : (
+        <div className="overflow-x-auto rounded-lg border bg-white shadow-sm"><table className="w-full text-left text-sm"><thead className="border-b text-gray-500"><tr><th className="px-4 py-3">Title</th><th className="px-4 py-3">Filed under</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Size</th></tr></thead><tbody>{documents.data.map((document) => <tr key={document.id} className="border-b last:border-0"><td className="px-4 py-3 font-medium"><Link className="hover:underline" href={`${ROUTE}/documents/${document.id}`}>{document.title}</Link>{document.failureReason && <p className="text-xs text-red-600">{document.failureReason}</p>}</td><td className="px-4 py-3 text-gray-600">{document.contentNodeTitle}</td><td className="px-4 py-3">{document.status}</td><td className="px-4 py-3">{document.sizeBytes === null ? '—' : `${(document.sizeBytes / 1048576).toFixed(1)} MB`}</td></tr>)}</tbody></table></div>
+      )}
+    </section>}
   </div>;
 }

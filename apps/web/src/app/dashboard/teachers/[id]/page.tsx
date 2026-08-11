@@ -7,6 +7,7 @@ import {
   apiListActiveSubjects,
   apiListSections,
   apiListTeacherAssignments,
+  apiListGradeLevels,
   ApiError,
 } from '@/lib/api-client';
 import { PageHeader } from '@/components/ui/page-header';
@@ -33,10 +34,11 @@ export default async function TeacherDetailPage({ params }: { params: { id: stri
     notFound();
   }
 
-  const [assignments, sections, subjects] = await Promise.all([
+  const [assignments, sections, subjects, gradeLevels] = await Promise.all([
     apiListTeacherAssignments(accessToken, { teacherId: teacher.id }),
     apiListSections(accessToken),
     apiListActiveSubjects(accessToken),
+    apiListGradeLevels(accessToken),
   ]);
 
   return (
@@ -45,7 +47,7 @@ export default async function TeacherDetailPage({ params }: { params: { id: stri
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-1">
-          <CreateAssignmentForm teacherId={teacher.id} sections={sections} subjects={subjects} />
+          <CreateAssignmentForm teacherId={teacher.id} sections={sections} subjects={subjects} gradeLevels={gradeLevels} />
         </div>
 
         <div className="lg:col-span-2">
@@ -69,8 +71,8 @@ export default async function TeacherDetailPage({ params }: { params: { id: stri
                   {assignments.map((assignment) => (
                     <tr key={assignment.id} className="border-b border-gray-100 last:border-b-0">
                       <td className="px-4 py-3 text-gray-600">
-                        {assignment.sectionLabel ?? (
-                          <span className="text-gray-400">All sections</span>
+                        {assignment.sectionLabel ?? assignment.gradeLevelName ?? (
+                          <span className="text-gray-400">Grade not specified</span>
                         )}
                       </td>
                       <td className="px-4 py-3 font-medium">{assignment.subjectName}</td>

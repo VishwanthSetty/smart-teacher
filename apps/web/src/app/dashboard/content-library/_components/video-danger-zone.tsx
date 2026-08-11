@@ -9,7 +9,7 @@ export function VideoDangerZone({ id, title, status, impact, canRetry }: { id: s
   const router = useRouter(); const pathname = usePathname(); const [error, setError] = useState<string | null>(null); const [busy, setBusy] = useState(false);
   async function retry() { setBusy(true); const response = await fetch(`/api/videos/${id}/retry`, { method: 'POST' }); setBusy(false); if (!response.ok) { const body = await response.json().catch(() => ({})); setError(body.message ?? 'Retry failed'); return; } router.refresh(); }
   async function remove() {
-    if (!window.confirm(`Delete “${title}”? This classification reaches ${impact.schoolCount} schools and ${impact.studentCount} active students. All HLS output and the source will be removed.`)) return;
+    if (!window.confirm(`Delete “${title}”? This classification reaches ${impact.schoolCount} schools, ${impact.studentCount} active students, and ${impact.teacherCount} assigned teachers. All HLS output and the source will be removed.`)) return;
     setBusy(true); const response = await fetch(`/api/videos/${id}`, { method: 'DELETE' }); setBusy(false);
     if (!response.ok) { const body = await response.json().catch(() => ({})); setError(body.message ?? 'Delete failed'); return; }
     router.push(pathname.replace(`/${id}`, '')); router.refresh();

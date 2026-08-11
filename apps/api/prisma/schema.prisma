@@ -51,6 +51,17 @@ enum CurriculumStatus {
   ARCHIVED
 }
 
+enum ContentAudience {
+  STUDENT
+  TEACHER
+}
+
+enum DocumentStatus {
+  UPLOADING
+  READY
+  FAILED
+}
+
 model School {
   id                  String                     @id @default(cuid())
   name                String
@@ -176,6 +187,9 @@ model GradeLevel {
   // only scalar columns still pass straight through — never `include` this relation
   // from a GradeLevel root; query Section directly instead.
   sections  Section[]
+  // Like sections, this tenant-scoped back-relation must never be included from a
+  // GradeLevel root; query TeacherAssignment directly instead.
+  teacherAssignments TeacherAssignment[]
 }
 
 model Subject {
@@ -256,13 +270,15 @@ model Curriculum {
   schemaId     String
   schema       CurriculumSchema           @relation(fields: [schemaId], references: [id])
   status       CurriculumStatus           @default(DRAFT)
+  audience     ContentAudience            @default(STUDENT)
   publishedAt  DateTime?
   nodes        ContentNode[]
   entitlements SchoolContentEntitlement[]
   createdAt    DateTime                   @default(now())
   updatedAt    DateTime                   @updatedAt
 
-  @@unique([gradeLevelId, subjectId])
+  @@unique([gradeLevelId, subjectId, audience])
+  @@index([audience, status])
   @@index([status])
 }
 
@@ -296,6 +312,7 @@ model ContentNode {
   // whole sibling set.
   sortOrder    Int
   videos       Video[]
+  documents    Document[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -404,6 +421,24 @@ model VideoRendition {
   @@unique([videoId, name])
 }
 
+model Document {
+  id            String         @id @default(cuid())
+  title         String
+  description   String?
+  status        DocumentStatus @default(UPLOADING)
+  sourceKey     String?        @unique
+  sizeBytes     Int?
+  contentType   String?
+  failureReason String?
+  contentNodeId String
+  node          ContentNode    @relation(fields: [contentNodeId], references: [id])
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([contentNodeId])
+  @@index([status])
+}
+
 // The one table that decides which global content a school may see, and therefore
 // tenant-scoped with a NOT NULL schoolId. Cascade on school delete: an entitlement
 // has no meaning without its school, and unlike User there is no platform-level row.
@@ -457,11 +492,15 @@ model TeacherAssignment {
   sectionId String?
   // Restrict, not Cascade: deleting a section must not silently unstaff its subjects.
   section   Section? @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  gradeLevelId String?
+  // Restrict prevents deletion from silently widening a teacher back to grade-less scope.
+  gradeLevel   GradeLevel? @relation(fields: [gradeLevelId], references: [id], onDelete: Restrict)
   createdAt DateTime @default(now())
 
   @@index([schoolId])
   @@index([userId])
   @@index([sectionId])
+  @@index([gradeLevelId])
 }
 
 // Short-lived staging artefact for the upload -> preview -> confirm handshake: the

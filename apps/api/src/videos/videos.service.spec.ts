@@ -9,6 +9,7 @@ import { VideosAccessPolicy } from './videos-access.policy';
 import { VideosService } from './videos.service';
 import { TranscodeReconcilerService } from './transcode-reconciler.service';
 import { MAX_VIDEO_BYTES } from './video-ingest.constants';
+import { ContentNodeUsabilityService } from '../curriculum/content-node-usability.service';
 
 const VIDEO_ID = 'video-1';
 const SOURCE_KEY = `${VIDEO_ID}/source.mp4`;
@@ -118,6 +119,7 @@ describe('VideosService', () => {
         { provide: StorageService, useValue: storage },
         { provide: TranscodeQueue, useValue: transcodeQueue },
         { provide: TranscodeReconcilerService, useValue: reconciler },
+        ContentNodeUsabilityService,
       ],
     }).compile();
 

@@ -3,7 +3,12 @@ import { PrismaClient, Role, VideoStatus } from '@prisma/client';
 import request from 'supertest';
 import { createE2eApp } from './utils/e2e-app';
 import { loginAllRoles, login, SEED_PASSWORD } from './utils/login';
-import { seedContentFixtures, ENTITLED_VIDEO_TITLE, UNENTITLED_VIDEO_TITLE } from './utils/content-fixtures';
+import {
+  ENTITLED_VIDEO_TITLE,
+  seedContentFixtures,
+  TEACHER_VIDEO_TITLE,
+  UNENTITLED_VIDEO_TITLE,
+} from './utils/content-fixtures';
 import { PresignedDownload, StorageService, StoredObject } from '../src/storage/storage.service';
 import { TranscodeQueue } from '../src/transcoding/transcode-queue';
 
@@ -17,8 +22,8 @@ interface Video {
   contentNodeId: string;
 }
 
-// The fixtures entitle demo-school to exactly (Grade 5, Mathematics) and demo-school-b to
-// nothing. Every assertion below leans on that asymmetry — granting more in
+// The fixtures entitle demo-school to exactly one curriculum per audience and demo-school-b
+// to nothing. Every assertion below leans on that asymmetry — granting more in
 // content-fixtures.ts would make these pass vacuously.
 const ENTITLED_TITLE = ENTITLED_VIDEO_TITLE;
 const UNENTITLED_TITLE = UNENTITLED_VIDEO_TITLE;
@@ -192,13 +197,13 @@ describe('Videos (e2e)', () => {
     it("lists only the videos covered by the school's entitlements", async () => {
       const res = await get('/videos', tokens[Role.TEACHER]).expect(200);
 
-      expect(res.body.map((v: Video) => v.title)).toEqual([ENTITLED_TITLE]);
+      expect(res.body.map((v: Video) => v.title)).toEqual([ENTITLED_TITLE, TEACHER_VIDEO_TITLE]);
     });
 
     it("gives a SCHOOL_ADMIN the school's entitled library", async () => {
       const res = await get('/videos', tokens[Role.SCHOOL_ADMIN]).expect(200);
 
-      expect(res.body.map((v: Video) => v.title)).toEqual([ENTITLED_TITLE]);
+      expect(res.body.map((v: Video) => v.title)).toEqual([ENTITLED_TITLE, TEACHER_VIDEO_TITLE]);
       expect(res.body.map((v: Video) => v.title)).not.toContain(UNENTITLED_TITLE);
     });
 
@@ -224,10 +229,11 @@ describe('Videos (e2e)', () => {
       await get(`/videos/${idOf(UNENTITLED_TITLE)}`, tokens[Role.TEACHER]).expect(404);
     });
 
-    it('gives a student the same entitled library as a teacher', async () => {
+    it('gives a student only entitled student-audience videos', async () => {
       const res = await get('/videos', tokens[Role.STUDENT]).expect(200);
 
       expect(res.body.map((v: Video) => v.title)).toEqual([ENTITLED_TITLE]);
+      await get(`/videos/${idOf(TEACHER_VIDEO_TITLE)}`, tokens[Role.STUDENT]).expect(404);
     });
 
     it('shows a school with no entitlements an empty library, not the whole platform', async () => {

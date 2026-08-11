@@ -78,6 +78,16 @@ describe('parseTeacherCsv', () => {
       expect(result.rows[0].subjectCodes).toEqual([]);
     });
 
+    it('accepts the optional grade_level column and preserves legacy files without it', () => {
+      const graded = parseTeacherCsv(
+        csv('email,name,grade_level,subject_codes', 'asha@example.com,Asha Rao,Grade 5,maths'),
+      );
+      const legacy = parseTeacherCsv(csv(HEADER, 'ravi@example.com,Ravi K,science'));
+
+      expect(graded.rows[0].gradeLevelName).toBe('Grade 5');
+      expect(legacy.rows[0].gradeLevelName).toBe('');
+    });
+
     it('reports a short row as a row error rather than aborting the file', () => {
       const result = parseTeacherCsv(csv(HEADER, 'asha@example.com', 'ravi@example.com,Ravi K,maths'));
 

@@ -27,6 +27,7 @@ describe('Teacher assignments (e2e)', () => {
   let mathsId: string;
   let scienceId: string;
   let grade5Id: string; // demo-school's grade levels are platform-global
+  let grade6Id: string;
   let schoolBSectionId: string; // demo-school-b, for the cross-tenant rejection test
   const createdSectionIds: string[] = [];
 
@@ -125,6 +126,7 @@ describe('Teacher assignments (e2e)', () => {
     mathsId = await findByLabel(adminToken, '/subjects', (s) => s.code === 'maths', 'maths');
     scienceId = await findByLabel(adminToken, '/subjects', (s) => s.code === 'science', 'science');
     grade5Id = await findByLabel(adminToken, '/grade-levels', (g) => g.name === 'Grade 5', 'Grade 5');
+    grade6Id = await findByLabel(adminToken, '/grade-levels', (g) => g.name === 'Grade 6', 'Grade 6');
     schoolBSectionId = await findByLabel(
       adminBToken,
       '/sections',
@@ -164,6 +166,34 @@ describe('Teacher assignments (e2e)', () => {
       const response = await createAssignment(adminToken, { teacherId, subjectId: mathsId }).expect(201);
 
       expect(response.body).toMatchObject({ sectionId: null, sectionLabel: null });
+    });
+
+    it('creates a grade-bearing assignment when no section is given', async () => {
+      const teacherId = await createTeacher(adminToken);
+
+      const response = await createAssignment(adminToken, {
+        teacherId,
+        subjectId: mathsId,
+        gradeLevelId: grade5Id,
+      }).expect(201);
+
+      expect(response.body).toMatchObject({
+        sectionId: null,
+        gradeLevelId: grade5Id,
+        gradeLevelName: 'Grade 5',
+      });
+    });
+
+    it('rejects a grade level that does not match the section', async () => {
+      const teacherId = await createTeacher(adminToken);
+      const sectionId = await createSection(adminToken);
+
+      await createAssignment(adminToken, {
+        teacherId,
+        subjectId: mathsId,
+        sectionId,
+        gradeLevelId: grade6Id,
+      }).expect(400);
     });
 
     it('rejects a second teacher for the same section and subject with a 409 naming the incumbent', async () => {

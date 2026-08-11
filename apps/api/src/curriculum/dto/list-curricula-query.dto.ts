@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { CurriculumStatus } from '@prisma/client';
+import { ContentAudience, CurriculumStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
@@ -33,4 +33,9 @@ export class ListCurriculaQueryDto {
   @IsOptional()
   @IsEnum(CurriculumStatus)
   status?: CurriculumStatus;
+
+  @ApiProperty({ required: false, enum: ContentAudience })
+  @IsOptional()
+  @IsEnum(ContentAudience)
+  audience?: ContentAudience;
 }

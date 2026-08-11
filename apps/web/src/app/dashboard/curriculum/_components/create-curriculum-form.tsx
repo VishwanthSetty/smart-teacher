@@ -29,6 +29,7 @@ export function CreateCurriculumForm({
         gradeLevelId: data.get('gradeLevelId'),
         subjectId: data.get('subjectId'),
         schemaId: data.get('schemaId'),
+        audience: data.get('audience'),
       }),
     });
     setBusy(false);
@@ -44,7 +45,14 @@ export function CreateCurriculumForm({
   return (
     <form onSubmit={submit} className="rounded-lg border bg-white p-5 shadow-sm">
       <h2 className="mb-4 text-lg font-medium">Create curriculum</h2>
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
+        <label className="grid gap-1 text-sm">
+          Audience
+          <select name="audience" required className="rounded border px-3 py-2">
+            <option value="STUDENT">Students</option>
+            <option value="TEACHER">Teachers</option>
+          </select>
+        </label>
         <label className="grid gap-1 text-sm">
           Grade level
           <select name="gradeLevelId" required className="rounded border px-3 py-2">

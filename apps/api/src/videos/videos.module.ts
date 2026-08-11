@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { EntitlementsModule } from '../entitlements/entitlements.module';
 import { StorageModule } from '../storage/storage.module';
 import { TranscodingModule } from '../transcoding/transcoding.module';
+import { CurriculumModule } from '../curriculum/curriculum.module';
 import { VideosAccessPolicy } from './videos-access.policy';
 import { VideosService } from './videos.service';
 import { VideosController } from './videos.controller';
@@ -11,7 +12,7 @@ import { TranscodeCallbackService } from './transcode-callback.service';
 import { TranscodeReconcilerService } from './transcode-reconciler.service';
 
 @Module({
-  imports: [EntitlementsModule, StorageModule, TranscodingModule],
+  imports: [EntitlementsModule, StorageModule, TranscodingModule, CurriculumModule],
   controllers: [VideosController, VideosAdminController, TranscodeCallbackController],
   providers: [
     VideosService,

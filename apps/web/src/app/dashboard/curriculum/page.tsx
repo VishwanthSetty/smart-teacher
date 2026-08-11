@@ -41,7 +41,7 @@ export default async function CurriculumPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Curriculum"
-        description="One curriculum per grade level and subject. Its tree is what schools browse, and what an entitlement grants."
+        description="One curriculum per grade level, subject, and audience. Its tree is what schools browse, and what an entitlement grants."
       />
 
       <div className="flex items-center justify-between">
@@ -69,9 +69,11 @@ export default async function CurriculumPage() {
               <tr>
                 <th className="px-4 py-3">Grade level</th>
                 <th className="px-4 py-3">Subject</th>
+                <th className="px-4 py-3">Audience</th>
                 <th className="px-4 py-3">Structure</th>
                 <th className="px-4 py-3">Nodes</th>
                 <th className="px-4 py-3">Videos</th>
+                <th className="px-4 py-3">Documents</th>
                 <th className="px-4 py-3">Status</th>
               </tr>
             </thead>
@@ -84,9 +86,11 @@ export default async function CurriculumPage() {
                     </Link>
                   </td>
                   <td className="px-4 py-3">{curriculum.subjectName}</td>
+                  <td className="px-4 py-3">{curriculum.audience === 'TEACHER' ? 'Teachers' : 'Students'}</td>
                   <td className="px-4 py-3 text-gray-600">{curriculum.schemaName}</td>
                   <td className="px-4 py-3">{curriculum.nodeCount}</td>
                   <td className="px-4 py-3">{curriculum.videoCount}</td>
+                  <td className="px-4 py-3">{curriculum.documentCount}</td>
                   <td className={`px-4 py-3 ${STATUS_CLASS[curriculum.status]}`}>{curriculum.status}</td>
                 </tr>
               ))}

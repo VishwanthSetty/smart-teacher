@@ -93,12 +93,15 @@ export class TaxonomyService {
     // route through the tenant guard's relation walker and either throw
     // MissingTenantContextError (SUPER_ADMIN has no schoolId) or answer "in this one
     // tenant" — the wrong question for a platform-wide check.
-    const [curriculumCount, sectionCount] = await this.prisma.$transaction([
+    const [curriculumCount, sectionCount, assignmentCount] = await this.prisma.$transaction([
       this.prisma.curriculum.count({ where: { gradeLevelId: id } }),
       this.prisma.section.count({ where: { gradeLevelId: id } }),
+      this.prisma.teacherAssignment.count({ where: { gradeLevelId: id } }),
     ]);
-    if (curriculumCount > 0 || sectionCount > 0) {
-      throw new ConflictException('This grade level is still used by curricula or sections');
+    if (curriculumCount > 0 || sectionCount > 0 || assignmentCount > 0) {
+      throw new ConflictException(
+        'This grade level is still used by curricula, sections or teacher assignments',
+      );
     }
 
     await this.prisma.gradeLevel.delete({ where: { id } });

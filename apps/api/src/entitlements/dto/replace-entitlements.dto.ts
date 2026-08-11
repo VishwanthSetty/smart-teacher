@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { ArrayMaxSize, IsArray, IsString, MinLength } from 'class-validator';
+import { ContentAudience } from '@prisma/client';
+import { ArrayMaxSize, IsArray, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class ReplaceEntitlementsDto {
   // The desired complete set of curricula for the school. An empty array is valid — it
@@ -11,4 +12,9 @@ export class ReplaceEntitlementsDto {
   @IsString({ each: true })
   @MinLength(1, { each: true })
   curriculumIds!: string[];
+
+  @ApiProperty({ required: false, enum: ContentAudience })
+  @IsOptional()
+  @IsEnum(ContentAudience)
+  audience?: ContentAudience;
 }

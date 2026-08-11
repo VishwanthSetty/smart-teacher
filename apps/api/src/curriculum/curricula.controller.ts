@@ -1,4 +1,4 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -7,6 +7,7 @@ import { AuthenticatedUser } from '../auth/types/authenticated-user.interface';
 import { ContentTreeService } from './content-tree.service';
 import { ContentTreeEntity } from './entities/content-tree.entity';
 import { CurriculumEntity } from './entities/curriculum.entity';
+import { ListMyCurriculaQueryDto } from './dto/list-my-curricula-query.dto';
 
 // The school-facing library structure. Browsing entitled content is available to
 // SCHOOL_ADMIN, TEACHER and STUDENT, matching VideosController. SUPER_ADMIN remains
@@ -23,8 +24,11 @@ export class CurriculaController {
 
   @Get()
   @ApiResponse({ status: 200, type: [CurriculumEntity] })
-  findAll(@CurrentUser() actor: AuthenticatedUser): Promise<CurriculumEntity[]> {
-    return this.tree.findAllVisibleTo(actor);
+  findAll(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Query() query: ListMyCurriculaQueryDto,
+  ): Promise<CurriculumEntity[]> {
+    return this.tree.findAllVisibleTo(actor, query.audience);
   }
 
   @Get(':id/tree')

@@ -99,8 +99,8 @@ describe('Teacher onboarding (e2e)', () => {
       );
     });
 
-    it('creates school-wide subject assignments when subjectIds are given', async () => {
-      const response = await createTeacher(adminToken, { subjectIds: [mathsSubjectId, scienceSubjectId] }).expect(
+    it('creates school-wide subject assignments when assignments are given', async () => {
+      const response = await createTeacher(adminToken, { assignments: [{ subjectId: mathsSubjectId }, { subjectId: scienceSubjectId }] }).expect(
         201,
       );
 
@@ -117,7 +117,7 @@ describe('Teacher onboarding (e2e)', () => {
     });
 
     it('rejects an unknown subject id with a 404', async () => {
-      await createTeacher(adminToken, { subjectIds: ['missing-subject'] }).expect(404);
+      await createTeacher(adminToken, { assignments: [{ subjectId: 'missing-subject' }] }).expect(404);
       expect(mailService.sendCredentials).not.toHaveBeenCalled();
     });
 

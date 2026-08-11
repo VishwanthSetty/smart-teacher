@@ -41,6 +41,12 @@ import type {
   UpdateContentNodeInput,
   UpdateCurriculumInput,
   UpdateCurriculumSchemaInput,
+  ContentAudience,
+  Document,
+  AdminDocument,
+  AdminDocumentDetail,
+  DocumentDownload,
+  DocumentUploadTicket,
 } from '@smart-teacher/shared-types';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:4000';
@@ -711,6 +717,7 @@ export interface CreateTeacherAssignmentInput {
   teacherId: string;
   subjectId: string;
   sectionId?: string;
+  gradeLevelId?: string;
 }
 
 export async function apiCreateTeacherAssignment(
@@ -784,6 +791,7 @@ export async function apiReplaceSchoolEntitlements(
   accessToken: string,
   schoolId: string,
   curriculumIds: string[],
+  audience?: ContentAudience,
 ): Promise<Entitlement[]> {
   const response = await fetch(`${API_URL}/admin/schools/${schoolId}/entitlements`, {
     method: 'PUT',
@@ -791,7 +799,7 @@ export async function apiReplaceSchoolEntitlements(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({ curriculumIds }),
+    body: JSON.stringify({ curriculumIds, audience }),
     cache: 'no-store',
   });
   return handleResponse<Entitlement[]>(response);
@@ -856,7 +864,7 @@ export interface CreateTeacherInput {
   firstName: string;
   lastName: string;
   email: string;
-  subjectIds?: string[];
+  assignments?: Array<{ subjectId: string; gradeLevelId?: string }>;
   password?: string;
   sendCredentialsEmail?: boolean;
 }
@@ -1095,6 +1103,7 @@ export async function apiListCurricula(
   if (query.gradeLevelId) params.set('gradeLevelId', query.gradeLevelId);
   if (query.subjectId) params.set('subjectId', query.subjectId);
   if (query.status) params.set('status', query.status);
+  if (query.audience) params.set('audience', query.audience);
 
   const response = await fetch(`${API_URL}/admin/curricula?${params}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -1248,12 +1257,130 @@ export async function apiDeleteContentNode(accessToken: string, id: string): Pro
 
 // SCHOOL_ADMIN, TEACHER and STUDENT. The API returns just the published curricula the school is
 // entitled to, narrowed further for a student to their enrolled grade level.
-export async function apiListMyCurricula(accessToken: string): Promise<Curriculum[]> {
-  const response = await fetch(`${API_URL}/curricula`, {
+export async function apiListMyCurricula(
+  accessToken: string,
+  audience?: ContentAudience,
+): Promise<Curriculum[]> {
+  const params = audience ? `?audience=${encodeURIComponent(audience)}` : '';
+  const response = await fetch(`${API_URL}/curricula${params}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: 'no-store',
   });
   return handleResponse<Curriculum[]>(response);
+}
+
+export interface ListAdminDocumentsQuery {
+  status?: string;
+  gradeLevelId?: string;
+  subjectId?: string;
+  curriculumId?: string;
+  contentNodeId?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface CreateDocumentInput {
+  title: string;
+  description?: string;
+  contentNodeId: string;
+  contentType: string;
+  sizeBytes: number;
+}
+
+export async function apiListDocuments(accessToken: string): Promise<Document[]> {
+  const response = await fetch(`${API_URL}/documents`, {
+    headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store',
+  });
+  return handleResponse<Document[]>(response);
+}
+
+export async function apiGetDocument(accessToken: string, id: string): Promise<Document> {
+  const response = await fetch(`${API_URL}/documents/${id}`, {
+    headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store',
+  });
+  return handleResponse<Document>(response);
+}
+
+export async function apiGetDocumentDownload(
+  accessToken: string,
+  id: string,
+): Promise<DocumentDownload> {
+  const response = await fetch(`${API_URL}/documents/${id}/download`, {
+    headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store',
+  });
+  return handleResponse<DocumentDownload>(response);
+}
+
+export async function apiListAdminDocuments(
+  accessToken: string,
+  query: ListAdminDocumentsQuery = {},
+): Promise<PaginatedResponse<AdminDocument>> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+  const response = await fetch(`${API_URL}/admin/documents?${params}`, {
+    headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store',
+  });
+  return handleResponse<PaginatedResponse<AdminDocument>>(response);
+}
+
+export async function apiGetAdminDocument(accessToken: string, id: string): Promise<AdminDocumentDetail> {
+  const response = await fetch(`${API_URL}/admin/documents/${id}`, {
+    headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store',
+  });
+  return handleResponse<AdminDocumentDetail>(response);
+}
+
+export async function apiCreateDocument(
+  accessToken: string,
+  input: CreateDocumentInput,
+): Promise<DocumentUploadTicket> {
+  const response = await fetch(`${API_URL}/admin/documents`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input), cache: 'no-store',
+  });
+  return handleResponse<DocumentUploadTicket>(response);
+}
+
+export async function apiCreateDocumentUploadUrl(
+  accessToken: string,
+  id: string,
+  input: { contentType: string; sizeBytes: number },
+): Promise<DocumentUploadTicket> {
+  const response = await fetch(`${API_URL}/admin/documents/${id}/upload-url`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input), cache: 'no-store',
+  });
+  return handleResponse<DocumentUploadTicket>(response);
+}
+
+export async function apiConfirmDocumentUpload(accessToken: string, id: string): Promise<AdminDocument> {
+  const response = await fetch(`${API_URL}/admin/documents/${id}/uploaded`, {
+    method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store',
+  });
+  return handleResponse<AdminDocument>(response);
+}
+
+export async function apiUpdateDocument(
+  accessToken: string,
+  id: string,
+  input: { title?: string; description?: string; contentNodeId?: string },
+): Promise<AdminDocumentDetail> {
+  const response = await fetch(`${API_URL}/admin/documents/${id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input), cache: 'no-store',
+  });
+  return handleResponse<AdminDocumentDetail>(response);
+}
+
+export async function apiDeleteDocument(accessToken: string, id: string): Promise<void> {
+  const response = await fetch(`${API_URL}/admin/documents/${id}`, {
+    method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store',
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ message: response.statusText }));
+    throw new ApiError(response.status, body.message ?? 'Request failed');
+  }
 }
 
 // 404 covers "no such curriculum", "not entitled" and "not published" alike — the API

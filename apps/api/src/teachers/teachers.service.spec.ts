@@ -99,17 +99,17 @@ describe('TeachersService', () => {
       prisma.subject.findMany.mockResolvedValue([maths, science]);
       prisma.user.create.mockResolvedValue(baseUser);
 
-      const result = await service.create({ ...dto, subjectIds: [maths.id, science.id] }, actor);
+      const result = await service.create({ ...dto, assignments: [{ subjectId: maths.id }, { subjectId: science.id }] }, actor);
 
       expect(prisma.teacherAssignment.createMany).toHaveBeenCalledWith({
         data: [
-          { schoolId: 'school-1', userId: 'teacher-1', subjectId: maths.id },
-          { schoolId: 'school-1', userId: 'teacher-1', subjectId: science.id },
+          { schoolId: 'school-1', userId: 'teacher-1', subjectId: maths.id, gradeLevelId: null },
+          { schoolId: 'school-1', userId: 'teacher-1', subjectId: science.id, gradeLevelId: null },
         ],
       });
       expect(result.subjects).toEqual([
-        { id: maths.id, name: maths.name, code: maths.code },
-        { id: science.id, name: science.name, code: science.code },
+        { id: maths.id, name: maths.name, code: maths.code, gradeLevelId: null, gradeLevelName: null },
+        { id: science.id, name: science.name, code: science.code, gradeLevelId: null, gradeLevelName: null },
       ]);
     });
 
@@ -132,7 +132,7 @@ describe('TeachersService', () => {
       prisma.school.findUnique.mockResolvedValue(school);
       prisma.subject.findMany.mockResolvedValue([maths]);
 
-      await expect(service.create({ ...dto, subjectIds: [maths.id, 'missing'] }, actor)).rejects.toBeInstanceOf(
+      await expect(service.create({ ...dto, assignments: [{ subjectId: maths.id }, { subjectId: 'missing' }] }, actor)).rejects.toBeInstanceOf(
         NotFoundException,
       );
       expect(prisma.$transaction).not.toHaveBeenCalled();
@@ -142,7 +142,7 @@ describe('TeachersService', () => {
       prisma.school.findUnique.mockResolvedValue(school);
       prisma.subject.findMany.mockResolvedValue([{ ...maths, status: SubjectStatus.RETIRED }]);
 
-      await expect(service.create({ ...dto, subjectIds: [maths.id] }, actor)).rejects.toBeInstanceOf(
+      await expect(service.create({ ...dto, assignments: [{ subjectId: maths.id }] }, actor)).rejects.toBeInstanceOf(
         BadRequestException,
       );
       expect(prisma.$transaction).not.toHaveBeenCalled();

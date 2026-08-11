@@ -10,6 +10,12 @@ export class TeacherSubjectEntity {
 
   @ApiProperty()
   code!: string;
+
+  @ApiProperty({ nullable: true })
+  gradeLevelId!: string | null;
+
+  @ApiProperty({ nullable: true })
+  gradeLevelName!: string | null;
 }
 
 // Never the Prisma row: passwordHash, token hashes and internal ids stay server-side.

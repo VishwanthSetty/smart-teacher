@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { CurriculumStatus } from '@prisma/client';
+import { ContentAudience, CurriculumStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface EntitledCurriculum {
@@ -8,6 +8,8 @@ export interface EntitledCurriculum {
   // grade without a second query — and without needing PrismaService of its own, which
   // would put data access on the wrong side of the scope seam.
   gradeLevelId: string;
+  subjectId: string;
+  audience: ContentAudience;
 }
 
 // The gate in front of platform content (F-02's reviewed exception, consumed by F-21).
@@ -44,13 +46,18 @@ export class ContentEntitlementsService {
   async listEntitledCurricula(): Promise<EntitledCurriculum[]> {
     const rows = await this.prisma.schoolContentEntitlement.findMany({
       where: { curriculum: { status: CurriculumStatus.PUBLISHED } },
-      select: { curriculumId: true, curriculum: { select: { gradeLevelId: true } } },
+      select: {
+        curriculumId: true,
+        curriculum: { select: { gradeLevelId: true, subjectId: true, audience: true } },
+      },
       orderBy: { grantedAt: 'asc' },
     });
 
     return rows.map((row) => ({
       curriculumId: row.curriculumId,
       gradeLevelId: row.curriculum.gradeLevelId,
+      subjectId: row.curriculum.subjectId,
+      audience: row.curriculum.audience,
     }));
   }
 }

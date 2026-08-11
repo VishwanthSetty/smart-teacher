@@ -1,8 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { CurriculumStatus } from '@prisma/client';
+import { ContentAudience, CurriculumStatus } from '@prisma/client';
 import { CurriculumLevelEntity } from './curriculum-schema.entity';
 
 export class CurriculumEntity {
+  @ApiProperty({ enum: ContentAudience })
+  audience!: ContentAudience;
   @ApiProperty()
   id!: string;
 
@@ -35,6 +37,9 @@ export class CurriculumEntity {
 
   @ApiProperty()
   videoCount!: number;
+
+  @ApiProperty()
+  documentCount!: number;
 }
 
 /** The tree builder's view: everything in CurriculumEntity plus the level vocabulary. */

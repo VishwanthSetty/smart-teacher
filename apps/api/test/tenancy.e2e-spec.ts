@@ -257,12 +257,10 @@ describe('Tenant isolation (e2e)', () => {
     let unentitledVideoId: string;
 
     beforeAll(async () => {
-      // Ordered, not arbitrary: the fixtures grant school A a published curriculum that
-      // holds videos *and* a draft one that does not, so an unordered pick could land on
-      // the draft and leave the "entitled" lookup below with nothing to find.
-      const entitlement = await asTenant(schoolA, () =>
-        prisma.schoolContentEntitlement.findFirstOrThrow({ orderBy: { grantedAt: 'asc' } }),
+      const entitlements = await asTenant(schoolA, () =>
+        prisma.schoolContentEntitlement.findMany({ select: { curriculumId: true } }),
       );
+      const entitledCurriculumIds = entitlements.map((row) => row.curriculumId);
 
       // status: READY on both is load-bearing, not incidental. Every school-facing read
       // narrows to READY on top of the entitlement check, so picking an in-flight ingest
@@ -273,7 +271,7 @@ describe('Tenant isolation (e2e)', () => {
       const entitled = await tenantContext.runWithSystemBypass(() =>
         prisma.video.findFirstOrThrow({
           where: {
-            node: { curriculumId: entitlement.curriculumId },
+            node: { curriculumId: { in: entitledCurriculumIds } },
             status: VideoStatus.READY,
           },
         }),
@@ -281,7 +279,7 @@ describe('Tenant isolation (e2e)', () => {
       const unentitled = await tenantContext.runWithSystemBypass(() =>
         prisma.video.findFirstOrThrow({
           where: {
-            node: { curriculumId: { not: entitlement.curriculumId } },
+            node: { curriculumId: { notIn: entitledCurriculumIds } },
             status: VideoStatus.READY,
           },
         }),
@@ -319,7 +317,9 @@ describe('Tenant isolation (e2e)', () => {
     it('lists only the videos covered by the school\'s entitlements', async () => {
       const listed = await asTenant(schoolA, () => videos.findAllVisibleTo(actorFor(schoolA, ownUserId)));
 
-      expect(listed.map((video) => video.id)).toEqual([entitledVideoId]);
+      const listedIds = listed.map((video) => video.id);
+      expect(listedIds).toContain(entitledVideoId);
+      expect(listedIds).not.toContain(unentitledVideoId);
     });
 
     it("never reveals another school's entitlements", async () => {

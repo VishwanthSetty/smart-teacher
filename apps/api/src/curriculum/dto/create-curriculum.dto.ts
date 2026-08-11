@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, MinLength } from 'class-validator';
+import { ContentAudience } from '@prisma/client';
+import { IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateCurriculumDto {
   @ApiProperty()
@@ -18,4 +19,9 @@ export class CreateCurriculumDto {
   @IsString()
   @MinLength(1)
   schemaId!: string;
+
+  @ApiProperty({ required: false, enum: ContentAudience, default: ContentAudience.STUDENT })
+  @IsOptional()
+  @IsEnum(ContentAudience)
+  audience?: ContentAudience;
 }

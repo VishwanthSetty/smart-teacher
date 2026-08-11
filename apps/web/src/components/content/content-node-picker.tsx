@@ -120,6 +120,7 @@ export function ContentNodePicker({
           <option value="">Choose curriculum</option>
           {curricula.map((curriculum) => (
             <option key={curriculum.id} value={curriculum.id}>
+              [{curriculum.audience === 'TEACHER' ? 'Teachers' : 'Students'}]{' '}
               {curriculum.gradeLevelName} · {curriculum.subjectName}
               {curriculum.status === 'PUBLISHED' ? '' : ' (draft)'}
             </option>

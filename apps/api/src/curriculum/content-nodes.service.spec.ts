@@ -41,6 +41,7 @@ describe('ContentNodesService', () => {
       delete: jest.Mock;
     };
     video: { count: jest.Mock };
+    document: { count: jest.Mock };
     $transaction: jest.Mock;
   };
 
@@ -62,6 +63,7 @@ describe('ContentNodesService', () => {
         delete: jest.fn().mockResolvedValue({ id: 'node-1' }),
       },
       video: { count: jest.fn().mockResolvedValue(0) },
+      document: { count: jest.fn().mockResolvedValue(0) },
       $transaction: jest.fn((arg: unknown) =>
         typeof arg === 'function'
           ? (arg as (tx: unknown) => unknown)(prisma)

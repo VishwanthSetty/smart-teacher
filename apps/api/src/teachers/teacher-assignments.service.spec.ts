@@ -6,7 +6,7 @@ import { AuthenticatedUser } from '../auth/types/authenticated-user.interface';
 import { TeacherAssignmentsService } from './teacher-assignments.service';
 
 const gradeLevel = { id: 'g5', name: 'Grade 5' };
-const section = { id: 'section-1', name: 'A', gradeLevel };
+const section = { id: 'section-1', name: 'A', gradeLevelId: 'g5', gradeLevel };
 const subject = { id: 'subject-1', name: 'Mathematics', code: 'maths', status: SubjectStatus.ACTIVE };
 const teacher = { id: 'teacher-1', role: Role.TEACHER };
 
@@ -25,6 +25,7 @@ function assignmentRow(overrides: Partial<Record<string, unknown>> = {}) {
     user: { id: 'teacher-1', name: 'Terry Teacher', email: 'terry@springfield-high.dev' },
     subject: { id: 'subject-1', name: 'Mathematics', code: 'maths' },
     section: { id: 'section-1', name: 'A', gradeLevel: { id: 'g5', name: 'Grade 5' } },
+    gradeLevel,
     ...overrides,
   };
 }
@@ -35,6 +36,7 @@ describe('TeacherAssignmentsService', () => {
     user: { findUnique: jest.Mock };
     subject: { findUnique: jest.Mock };
     section: { findUnique: jest.Mock };
+    gradeLevel: { count: jest.Mock };
     teacherAssignment: {
       findFirst: jest.Mock;
       findMany: jest.Mock;
@@ -49,6 +51,7 @@ describe('TeacherAssignmentsService', () => {
       user: { findUnique: jest.fn() },
       subject: { findUnique: jest.fn() },
       section: { findUnique: jest.fn() },
+      gradeLevel: { count: jest.fn() },
       teacherAssignment: {
         findFirst: jest.fn(),
         findMany: jest.fn(),
@@ -80,7 +83,13 @@ describe('TeacherAssignmentsService', () => {
 
       expect(prisma.teacherAssignment.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: { schoolId: 'school-1', userId: 'teacher-1', subjectId: 'subject-1', sectionId: 'section-1' },
+          data: {
+            schoolId: 'school-1',
+            userId: 'teacher-1',
+            subjectId: 'subject-1',
+            sectionId: 'section-1',
+            gradeLevelId: 'g5',
+          },
         }),
       );
       expect(result).toEqual(expect.objectContaining({ id: 'assignment-1', sectionLabel: 'Grade 5 - A' }));
@@ -90,7 +99,7 @@ describe('TeacherAssignmentsService', () => {
       prisma.user.findUnique.mockResolvedValue(teacher);
       prisma.subject.findUnique.mockResolvedValue(subject);
       prisma.teacherAssignment.create.mockResolvedValue(
-        assignmentRow({ id: 'assignment-2', section: null }),
+        assignmentRow({ id: 'assignment-2', section: null, gradeLevel: null }),
       );
 
       const result = await service.create({ teacherId: 'teacher-1', subjectId: 'subject-1' }, actor);
@@ -102,6 +111,44 @@ describe('TeacherAssignmentsService', () => {
       expect(result).toEqual(
         expect.objectContaining({ sectionId: null, sectionLabel: null, gradeLevelId: null }),
       );
+    });
+
+    it('creates a grade-bearing assignment without a section', async () => {
+      prisma.user.findUnique.mockResolvedValue(teacher);
+      prisma.subject.findUnique.mockResolvedValue(subject);
+      prisma.gradeLevel.count.mockResolvedValue(1);
+      prisma.teacherAssignment.create.mockResolvedValue(
+        assignmentRow({ id: 'assignment-2', section: null }),
+      );
+
+      await service.create(
+        { teacherId: 'teacher-1', subjectId: 'subject-1', gradeLevelId: 'g5' },
+        actor,
+      );
+
+      expect(prisma.gradeLevel.count).toHaveBeenCalledWith({ where: { id: 'g5' } });
+      expect(prisma.teacherAssignment.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ gradeLevelId: 'g5' }) }),
+      );
+    });
+
+    it('rejects a grade level that disagrees with the selected section', async () => {
+      prisma.user.findUnique.mockResolvedValue(teacher);
+      prisma.subject.findUnique.mockResolvedValue(subject);
+      prisma.section.findUnique.mockResolvedValue(section);
+
+      await expect(
+        service.create(
+          {
+            teacherId: 'teacher-1',
+            subjectId: 'subject-1',
+            sectionId: 'section-1',
+            gradeLevelId: 'g6',
+          },
+          actor,
+        ),
+      ).rejects.toThrow('That grade level does not match the section');
+      expect(prisma.teacherAssignment.create).not.toHaveBeenCalled();
     });
 
     it('refuses a second teacher for a section-subject pair already staffed', async () => {

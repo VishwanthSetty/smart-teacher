@@ -16,4 +16,9 @@ export class ListTeacherAssignmentsQueryDto {
   @IsOptional()
   @IsString()
   subjectId?: string;
+
+  @ApiProperty({ required: false, description: 'Filter to one grade level' })
+  @IsOptional()
+  @IsString()
+  gradeLevelId?: string;
 }

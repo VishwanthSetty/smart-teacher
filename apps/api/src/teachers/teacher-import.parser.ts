@@ -18,6 +18,7 @@ export type TeacherImportErrorCode =
   | 'DUPLICATE_EXISTING'
   | 'UNKNOWN_SUBJECT'
   | 'RETIRED_SUBJECT'
+  | 'UNKNOWN_GRADE_LEVEL'
   | 'PASSWORD_TOO_SHORT'
   | 'PASSWORD_TOO_LONG'
   | 'PASSWORD_MATCHES_EMAIL';
@@ -37,6 +38,7 @@ export interface TeacherImportRowError {
   email: string;
   name: string;
   subjectCodes: string;
+  gradeLevelName: string;
   errors: TeacherImportRowIssue[];
 }
 
@@ -46,6 +48,7 @@ export interface ParsedTeacherRow {
   name: string;
   subjectCodes: string[];
   rawSubjectCodes: string;
+  gradeLevelName: string;
   password: string;
 }
 
@@ -184,6 +187,7 @@ export function parseTeacherCsv(buffer: Buffer): ParsedTeacherFile {
     const email = rawEmail.toLowerCase();
     const name = cell(record, 'name');
     const rawSubjectCodes = cell(record, 'subject_codes');
+    const gradeLevelName = cell(record, 'grade_level');
     const password = cell(record, 'password');
 
     // Every applicable reason is collected, not just the first, so one correction pass
@@ -229,7 +233,7 @@ export function parseTeacherCsv(buffer: Buffer): ParsedTeacherFile {
     }
 
     if (errors.length > 0) {
-      rowErrors.push({ rowNumber, email: rawEmail, name, subjectCodes: rawSubjectCodes, errors });
+      rowErrors.push({ rowNumber, email: rawEmail, name, gradeLevelName, subjectCodes: rawSubjectCodes, errors });
       continue;
     }
 
@@ -239,6 +243,7 @@ export function parseTeacherCsv(buffer: Buffer): ParsedTeacherFile {
       name,
       subjectCodes: splitSubjectCodes(rawSubjectCodes),
       rawSubjectCodes,
+      gradeLevelName,
       password,
     });
   }

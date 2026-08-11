@@ -62,6 +62,10 @@ interface ResolvedSubject {
   status: SubjectStatus;
 }
 
+function normalizeGradeName(value: string): string {
+  return value.trim().toLocaleLowerCase('en-US');
+}
+
 @Injectable()
 export class TeacherImportService {
   private readonly logger = new Logger(TeacherImportService.name);
@@ -170,6 +174,7 @@ export class TeacherImportService {
           );
 
           const subjectsByCode = await this.resolveSubjects(tx, rows);
+          const gradeLevelsByName = await this.resolveGradeLevels(tx, rows);
           const createdRows: typeof created = [];
 
           for (let index = 0; index < rows.length; index += CREATE_CHUNK_SIZE) {
@@ -204,7 +209,16 @@ export class TeacherImportService {
               }
               return row.subjectCodes.flatMap((code) => {
                 const subject = subjectsByCode.get(code);
-                return subject ? [{ schoolId, userId, subjectId: subject.id }] : [];
+                const gradeLevelName = row.gradeLevelName ?? '';
+                const gradeLevel = gradeLevelName === ''
+                  ? undefined
+                  : gradeLevelsByName.get(normalizeGradeName(gradeLevelName));
+                return subject ? [{
+                  schoolId,
+                  userId,
+                  subjectId: subject.id,
+                  gradeLevelId: gradeLevel?.id ?? null,
+                }] : [];
               });
             });
 
@@ -304,7 +318,7 @@ export class TeacherImportService {
   // previewed as valid can only become invalid because the database changed, never
   // because the two paths disagree.
   private async applyDatabaseValidation(
-    client: Pick<PrismaService, 'user' | 'subject'>,
+    client: Pick<PrismaService, 'user' | 'subject' | 'gradeLevel'>,
     rows: ParsedTeacherRow[],
     existingErrors: TeacherImportRowError[],
   ): Promise<{ rows: ParsedTeacherRow[]; rowErrors: TeacherImportRowError[] }> {
@@ -314,6 +328,7 @@ export class TeacherImportService {
 
     const takenEmails = await this.findTakenEmails(client, rows);
     const subjectsByCode = await this.resolveSubjects(client, rows);
+    const gradeLevelsByName = await this.resolveGradeLevels(client, rows);
 
     const valid: ParsedTeacherRow[] = [];
     const rowErrors = [...existingErrors];
@@ -353,6 +368,15 @@ export class TeacherImportService {
           message: `Subject code(s) no longer offered: ${retired.join(', ')}.`,
         });
       }
+      if (
+        (row.gradeLevelName ?? '') !== '' &&
+        !gradeLevelsByName.has(normalizeGradeName(row.gradeLevelName ?? ''))
+      ) {
+        errors.push({
+          code: 'UNKNOWN_GRADE_LEVEL',
+          message: `Grade level "${row.gradeLevelName}" is not in the canonical grade list.`,
+        });
+      }
 
       if (errors.length > 0) {
         rowErrors.push({
@@ -360,6 +384,7 @@ export class TeacherImportService {
           email: row.email,
           name: row.name,
           subjectCodes: row.rawSubjectCodes,
+          gradeLevelName: row.gradeLevelName ?? '',
           errors,
         });
         continue;
@@ -401,6 +426,22 @@ export class TeacherImportService {
     });
 
     return new Map(subjects.map((subject) => [subject.code, { id: subject.id, status: subject.status }]));
+  }
+
+  private async resolveGradeLevels(
+    client: Pick<PrismaService, 'gradeLevel'>,
+    rows: ParsedTeacherRow[],
+  ): Promise<Map<string, { id: string }>> {
+    const wanted = new Set(
+      rows.flatMap((row) => (row.gradeLevelName ?? '') === '' ? [] : [normalizeGradeName(row.gradeLevelName ?? '')]),
+    );
+    if (wanted.size === 0) return new Map();
+    const gradeLevels = await client.gradeLevel.findMany({ select: { id: true, name: true } });
+    return new Map(
+      gradeLevels
+        .filter((grade) => wanted.has(normalizeGradeName(grade.name)))
+        .map((grade) => [normalizeGradeName(grade.name), { id: grade.id }]),
+    );
   }
 
   // Opportunistic, like LoginThrottleService's attempt pruning — a staging table does not

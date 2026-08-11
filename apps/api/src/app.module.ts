@@ -22,6 +22,7 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { WorkerAuthGuard } from './auth/guards/worker-auth.guard';
 import { PlaybackModule } from './playback/playback.module';
 import { PlaybackTokenGuard } from './playback/playback-token.guard';
+import { DocumentsModule } from './documents/documents.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { PlaybackTokenGuard } from './playback/playback-token.guard';
     TeachersModule,
     StudentsModule,
     VideosModule,
+    DocumentsModule,
     PlaybackModule,
     HealthModule,
   ],
