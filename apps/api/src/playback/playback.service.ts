@@ -8,7 +8,7 @@ import { VideosService } from '../videos/videos.service';
 import { PlaybackTokenEntity } from './entities/playback-token.entity';
 import { rewriteHlsManifest } from './hls-rewrite';
 import { masterUri, segmentKey, variantUri } from './playback-keys';
-import { PlaybackTokenService } from './playback-token.service';
+import { PlaybackTokenService, videoPrefix } from './playback-token.service';
 import { DeliveryMode, playbackUrls } from './playback-urls';
 
 @Injectable()
@@ -23,7 +23,7 @@ export class PlaybackService {
 
   async createToken(id: string, actor: AuthenticatedUser): Promise<PlaybackTokenEntity> {
     const video = await this.videos.findPlayableVisibleTo(id, actor);
-    const { token, expiresInSecs } = await this.tokens.mint(id, actor.sub);
+    const { token, expiresInSecs } = await this.tokens.mint(videoPrefix(id), actor.sub);
     const mode = this.config.getOrThrow<DeliveryMode>('PLAYBACK_DELIVERY_MODE');
     const origin = this.config.getOrThrow<string>(
       mode === 'edge' ? 'PLAYBACK_EDGE_ORIGIN' : 'PLAYBACK_API_ORIGIN',

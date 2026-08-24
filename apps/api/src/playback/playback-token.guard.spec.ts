@@ -22,7 +22,7 @@ describe('PlaybackTokenGuard', () => {
     await expect(guard.canActivate(context({ params: { id: 'a' }, query: { t: ['x'] } }))).rejects.toBeInstanceOf(UnauthorizedException);
     const request = { params: { id: 'video-a' }, query: { t: 'token' } };
     await expect(guard.canActivate(context(request))).resolves.toBe(true);
-    expect(tokens.verify).toHaveBeenCalledWith('token', 'video-a');
+    expect(tokens.verify).toHaveBeenCalledWith('token', 'videos/video-a/');
     expect(request).toHaveProperty('playbackToken', 'token');
   });
 });
