@@ -8,5 +8,6 @@ import { SchoolsService } from './schools.service';
   imports: [MailModule, InvitesModule],
   controllers: [SchoolsController],
   providers: [SchoolsService],
+  exports: [SchoolsService],
 })
 export class SchoolsModule {}

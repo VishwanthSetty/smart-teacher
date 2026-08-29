@@ -3,7 +3,7 @@
 import type { PlaybackToken } from '@smart-teacher/shared-types';
 import type HlsJs from 'hls.js';
 import type { ErrorData, LoaderCallbacks, LoaderConfiguration, LoaderContext } from 'hls.js';
-import { Loader2, Play } from 'lucide-react';
+import { Loader2, LockKeyhole, Play } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 const NATIVE_HLS_TYPE = 'application/vnd.apple.mpegurl';
@@ -32,7 +32,7 @@ class PlaybackAuthError extends Error {
 function describeFailure(error: unknown): { message: string; canRetry: boolean } {
   const status = error instanceof PlaybackAuthError ? error.status : 0;
   if (status === 401) {
-    return { message: 'Your session has expired. Reload the page to keep watching.', canRetry: false };
+    return { message: 'Your viewing session expired', canRetry: true };
   }
   if (status === 403 || status === 404) {
     return { message: 'This video is no longer available.', canRetry: false };
@@ -355,6 +355,11 @@ export function HlsPlayer({
 
       {state.name === 'error' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80 p-6 text-center">
+          {state.message === 'Your viewing session expired' ? (
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white">
+              <LockKeyhole className="h-6 w-6" aria-hidden="true" />
+            </span>
+          ) : null}
           <p role="alert" className="text-sm text-white">
             {state.message}
           </p>
@@ -364,7 +369,7 @@ export function HlsPlayer({
               onClick={retry}
               className="rounded-md bg-white px-3 py-2 text-sm font-medium text-gray-900 hover:bg-gray-200"
             >
-              Retry
+              {state.message === 'Your viewing session expired' ? 'Reload video' : 'Retry'}
             </button>
           )}
         </div>

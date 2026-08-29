@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ListTree } from 'lucide-react';
-import { CurriculumStatus } from '@smart-teacher/shared-types';
 import {
   apiListActiveSubjects,
   apiListAdminGradeLevels,
@@ -13,14 +12,10 @@ import { getAccessToken, requireUser } from '@/lib/session';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { CreateCurriculumForm } from './_components/create-curriculum-form';
+import { StatusBadge } from '@/components/ui/badge';
+import { Table, TableCell, TableHead, TableHeaderCell, TableRow, TableShell } from '@/components/ui/table';
 
 const ROUTE = '/dashboard/curriculum';
-
-const STATUS_CLASS: Record<CurriculumStatus, string> = {
-  PUBLISHED: 'text-green-700',
-  DRAFT: 'text-amber-700',
-  ARCHIVED: 'text-gray-500',
-};
 
 export default async function CurriculumPage() {
   const user = await requireUser();
@@ -45,11 +40,11 @@ export default async function CurriculumPage() {
       />
 
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-ink-muted">
           Level names and depth come from a schema, so the structure can differ from grade to grade
           and subject to subject.
         </p>
-        <Link href={`${ROUTE}/schemas`} className="text-sm font-medium text-gray-700 hover:underline">
+        <Link href={`${ROUTE}/schemas`} className="text-sm font-medium text-brand-blue hover:text-brand-navy">
           Manage level schemas →
         </Link>
       </div>
@@ -63,40 +58,40 @@ export default async function CurriculumPage() {
           description="Create one above. Until a curriculum exists for a grade level and subject, no school can be granted it and no video can be filed under it."
         />
       ) : (
-        <div className="overflow-x-auto rounded-lg border bg-white shadow-sm">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b text-gray-500">
+        <TableShell>
+          <Table>
+            <TableHead>
               <tr>
-                <th className="px-4 py-3">Grade level</th>
-                <th className="px-4 py-3">Subject</th>
-                <th className="px-4 py-3">Audience</th>
-                <th className="px-4 py-3">Structure</th>
-                <th className="px-4 py-3">Nodes</th>
-                <th className="px-4 py-3">Videos</th>
-                <th className="px-4 py-3">Documents</th>
-                <th className="px-4 py-3">Status</th>
+                <TableHeaderCell>Grade level</TableHeaderCell>
+                <TableHeaderCell>Subject</TableHeaderCell>
+                <TableHeaderCell>Audience</TableHeaderCell>
+                <TableHeaderCell>Structure</TableHeaderCell>
+                <TableHeaderCell>Nodes</TableHeaderCell>
+                <TableHeaderCell>Videos</TableHeaderCell>
+                <TableHeaderCell>Documents</TableHeaderCell>
+                <TableHeaderCell>Status</TableHeaderCell>
               </tr>
-            </thead>
+            </TableHead>
             <tbody>
               {curricula.data.map((curriculum) => (
-                <tr key={curriculum.id} className="border-b last:border-0">
-                  <td className="px-4 py-3">
-                    <Link className="font-medium hover:underline" href={`${ROUTE}/${curriculum.id}`}>
+                <TableRow key={curriculum.id}>
+                  <TableCell>
+                    <Link className="font-medium hover:text-brand-blue" href={`${ROUTE}/${curriculum.id}`}>
                       {curriculum.gradeLevelName}
                     </Link>
-                  </td>
-                  <td className="px-4 py-3">{curriculum.subjectName}</td>
-                  <td className="px-4 py-3">{curriculum.audience === 'TEACHER' ? 'Teachers' : 'Students'}</td>
-                  <td className="px-4 py-3 text-gray-600">{curriculum.schemaName}</td>
-                  <td className="px-4 py-3">{curriculum.nodeCount}</td>
-                  <td className="px-4 py-3">{curriculum.videoCount}</td>
-                  <td className="px-4 py-3">{curriculum.documentCount}</td>
-                  <td className={`px-4 py-3 ${STATUS_CLASS[curriculum.status]}`}>{curriculum.status}</td>
-                </tr>
+                  </TableCell>
+                  <TableCell>{curriculum.subjectName}</TableCell>
+                  <TableCell>{curriculum.audience === 'TEACHER' ? 'Teachers' : 'Students'}</TableCell>
+                  <TableCell className="text-ink-muted">{curriculum.schemaName}</TableCell>
+                  <TableCell>{curriculum.nodeCount}</TableCell>
+                  <TableCell>{curriculum.videoCount}</TableCell>
+                  <TableCell>{curriculum.documentCount}</TableCell>
+                  <TableCell><StatusBadge status={curriculum.status} /></TableCell>
+                </TableRow>
               ))}
             </tbody>
-          </table>
-        </div>
+          </Table>
+        </TableShell>
       )}
     </div>
   );

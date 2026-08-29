@@ -9,7 +9,7 @@ const ROUTE = '/dashboard/timetable';
 export default async function TimetablePage() {
   const user = await requireUser();
   if (!canRoleAccess(user.role, ROUTE)) {
-    redirect('/dashboard');
+    redirect('/dashboard/forbidden');
   }
 
   return (

@@ -1,3 +1,50 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --brand-navy: #0d47a1;
+  --brand-blue: #2196f3;
+  --brand-soft: #90caf9;
+  --brand-tint: #e3f2fd;
+  --surface-canvas: #f5f8fc;
+  --surface-border: #e2e8f0;
+  --ink: #0f172a;
+  --ink-muted: #64748b;
+}
+
+html {
+  background: var(--surface-canvas);
+}
+
+body {
+  background-color: var(--surface-canvas);
+  color: var(--ink);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+::selection {
+  background: var(--brand-tint);
+  color: var(--brand-navy);
+}
+
+@keyframes skeleton-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+@layer components {
+  .field {
+    @apply h-10 w-full rounded-lg border border-surface-border bg-white px-3 text-sm text-ink outline-none transition placeholder:text-slate-400 focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/15;
+  }
+
+  .field-label {
+    @apply mb-1.5 block text-xs font-medium text-ink;
+  }
+}

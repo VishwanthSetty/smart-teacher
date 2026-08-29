@@ -118,6 +118,27 @@ export class VideosService {
     private readonly nodeUsability: ContentNodeUsabilityService,
   ) {}
 
+  async getPlatformPipeline(): Promise<{
+    total: number;
+    ready: number;
+    processing: number;
+    queued: number;
+    failed: number;
+  }> {
+    const [total, rows] = await Promise.all([
+      this.prisma.video.count(),
+      this.prisma.video.groupBy({ by: ['status'], _count: { _all: true } }),
+    ]);
+    const counts = new Map(rows.map((row) => [row.status, row._count._all]));
+    return {
+      total,
+      ready: counts.get(VideoStatus.READY) ?? 0,
+      processing: counts.get(VideoStatus.PROCESSING) ?? 0,
+      queued: counts.get(VideoStatus.QUEUED) ?? 0,
+      failed: counts.get(VideoStatus.FAILED) ?? 0,
+    };
+  }
+
   // One fetch, then the policy decides — a video the caller isn't entitled to is
   // indistinguishable from one that doesn't exist. The status filter is part of the
   // same fetch so an in-flight upload reads as a 404 rather than a filtered-out 200.

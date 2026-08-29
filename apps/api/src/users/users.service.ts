@@ -3,6 +3,7 @@ import { Prisma, Role, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { InvitesService } from '../invites/invites.service';
+import { EnrollmentsService } from '../students/enrollments.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.interface';
 import { actorScopeOf, requireReadable } from '../common/authorization/resource-access';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -40,6 +41,7 @@ export class UsersService {
     private readonly mailService: MailService,
     private readonly invitesService: InvitesService,
     private readonly usersAccessPolicy: UsersAccessPolicy,
+    private readonly enrollmentsService: EnrollmentsService,
   ) {}
 
   findAll(): Promise<UserEntity[]> {
@@ -61,15 +63,35 @@ export class UsersService {
     };
 
     if (!actor.schoolId) {
-      return { ...claims, school: null };
+      return { ...claims, school: null, enrollment: null };
     }
 
-    const school = await this.prisma.school.findUnique({
-      where: { id: actor.schoolId },
-      select: ME_SCHOOL_SELECT,
-    });
+    const [school, enrollment] = await Promise.all([
+      this.prisma.school.findUnique({
+        where: { id: actor.schoolId },
+        select: ME_SCHOOL_SELECT,
+      }),
+      actor.role === Role.STUDENT
+        ? this.enrollmentsService.activeProfileFor(actor.sub)
+        : Promise.resolve(null),
+    ]);
 
-    return { ...claims, school };
+    return {
+      ...claims,
+      school,
+      enrollment: enrollment
+        ? {
+            id: enrollment.id,
+            sectionId: enrollment.sectionId,
+            sectionName: enrollment.section.name,
+            sectionLabel: `${enrollment.section.gradeLevel.name} - ${enrollment.section.name}`,
+            gradeLevelId: enrollment.section.gradeLevel.id,
+            gradeLevelName: enrollment.section.gradeLevel.name,
+            gradeLevelRank: enrollment.section.gradeLevel.rank,
+            rollNumber: enrollment.rollNumber,
+          }
+        : null,
+    };
   }
 
   // Tenant scoping is automatic — the guard extension scopes `count` alongside the

@@ -39,13 +39,18 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="w-full max-w-sm space-y-4 rounded-lg border border-gray-200 bg-white p-8 shadow-sm"
+      className="w-full space-y-5"
     >
-      <h1 className="text-xl font-semibold">Smart Teacher Admin</h1>
+      <div>
+        <h1 className="text-2xl font-semibold text-ink">Sign in</h1>
+        <p className="mt-1 text-sm text-ink-muted">Use the account your school gave you.</p>
+      </div>
+
+      {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-status-danger">{error}</div> : null}
 
       <div className="space-y-1">
-        <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-          Email
+        <label htmlFor="email" className="field-label">
+          Email address
         </label>
         <input
           id="email"
@@ -53,12 +58,12 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
+          className="field"
         />
       </div>
 
       <div className="space-y-1">
-        <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="password" className="field-label">
           Password
         </label>
         <PasswordInput
@@ -70,34 +75,33 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
       </div>
 
       <div className="space-y-1">
-        <label htmlFor="schoolSlug" className="block text-sm font-medium text-gray-700">
-          School slug <span className="text-gray-400">(leave blank for platform admin)</span>
+        <label htmlFor="schoolSlug" className="field-label">
+          School slug <span className="font-normal text-ink-muted">(leave blank for platform admin)</span>
         </label>
         <input
           id="schoolSlug"
           type="text"
           value={schoolSlug}
           onChange={(e) => setSchoolSlug(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
+          className="field font-mono text-xs"
         />
       </div>
-
-      {error && <p className="text-sm text-red-600">{error}</p>}
 
       <button
         type="submit"
         disabled={isSubmitting}
-        className="w-full rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+        className="h-11 w-full rounded-lg bg-brand-blue px-3 text-sm font-medium text-white shadow-sm transition hover:bg-brand-navy disabled:opacity-50"
       >
         {isSubmitting ? 'Signing in…' : 'Sign in'}
       </button>
 
       <Link
         href={schoolSlug ? `/forgot-password?schoolSlug=${encodeURIComponent(schoolSlug)}` : '/forgot-password'}
-        className="block text-center text-sm font-medium text-gray-900 underline"
+        className="block text-center text-sm font-medium text-brand-blue hover:text-brand-navy"
       >
         Forgot password?
       </Link>
+      <p className="pt-4 text-center text-xs text-ink-muted">Trouble signing in? Contact your school administrator.</p>
     </form>
   );
 }

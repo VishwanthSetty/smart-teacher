@@ -201,7 +201,11 @@ which role sees which route.
 ### 5.1 App shell
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the application shell for the Smart Teacher admin console — sidebar, top header, and the
 mobile equivalent. Show it wrapping a generic content area.
@@ -230,7 +234,11 @@ of five icon+label items and a hamburger for the rest.
 ### 5.2 Login
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the sign-in page for Smart Teacher, a school content platform. Split screen at 1440px.
 
@@ -255,7 +263,11 @@ Footer line, 12px #64748B, centred: "Trouble signing in? Contact your school adm
 ### 5.3 Forgot password and reset password
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design two password screens for Smart Teacher, reusing the split layout of the sign-in page (navy
 #0D47A1 panel on the left, form on the right).
@@ -279,7 +291,11 @@ link".
 ### 5.4 Set password (invite acceptance)
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the account activation page for Smart Teacher. A teacher or student has been invited by
 their school admin and clicked the link in their email; this is where they set their first
@@ -303,7 +319,11 @@ Below the button, a 12px #64748B note: "Your school administrator can never see 
 ### 6.1 Platform dashboard
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the platform super admin dashboard for Smart Teacher. Sidebar (Dashboard, Schools, Content
 Library, Grade Levels & Subjects, Curriculum, School Entitlements, Platform Settings) with
@@ -330,7 +350,11 @@ Keep it calm and uncrowded. No charts, no revenue or engagement metrics.
 ### 6.2 Schools
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the "Schools" management screen for the Smart Teacher platform super admin. Sidebar with
 Schools active.
@@ -363,7 +387,11 @@ buttons Cancel and a red "Suspend school".
 ### 6.3 Content library
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the "Content Library" screen for the Smart Teacher platform super admin — where platform
 videos and PDFs are uploaded and catalogued. Sidebar with Content Library active.
@@ -416,7 +444,11 @@ videos can be catalogued.", and a #2196F3 button "Go to Grade Levels & Subjects"
 ### 6.4 Video detail
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the video detail screen in the Smart Teacher platform admin's Content Library.
 
@@ -448,7 +480,11 @@ showing FAILED.
 ### 6.5 Document detail
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the PDF document detail screen in the Smart Teacher platform admin's Content Library.
 
@@ -471,7 +507,11 @@ Right column (40%), stacked cards:
 ### 6.6 Grade levels and subjects
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the "Grade Levels & Subjects" taxonomy screen for the Smart Teacher platform super admin.
 Sidebar with Grade Levels & Subjects active.
@@ -499,7 +539,11 @@ centred in the table body in #64748B.
 ### 6.7 Curriculum list
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the "Curriculum" screen for the Smart Teacher platform super admin. A curriculum is one
 grade level + subject + audience, and its tree is what schools browse. Sidebar with Curriculum
@@ -529,7 +573,11 @@ can be granted it and no video can be filed under it."
 ### 6.8 Curriculum schemas
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the "Curriculum schemas" screen for the Smart Teacher platform super admin. A schema defines
 the names and depth of the levels below grade and subject — for example Unit → Chapter → Topic.
@@ -555,7 +603,11 @@ Show three schema cards with different depths to make the point that structures 
 ### 6.9 Curriculum builder (content tree)
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the curriculum builder screen for the Smart Teacher platform super admin — where the content
 tree of one curriculum is authored. This is the most important screen in the product; give it real
@@ -590,7 +642,11 @@ entitled to it and will see this tree immediately.", buttons Cancel and #2196F3 
 ### 6.10 Entitlements — school list
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the "School Entitlements" landing screen for the Smart Teacher platform super admin — the
 list of schools you pick from before granting content. Sidebar with School Entitlements active.
@@ -614,7 +670,11 @@ in #64748B and the coverage bar is empty.
 ### 6.11 Entitlement matrix
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the entitlement grid screen for the Smart Teacher platform super admin — a grade level ×
 subject matrix of checkboxes controlling which curricula one school can reach.
@@ -648,7 +708,11 @@ Also show the revoke confirm dialog: amber warning icon, title "Revoke 2 entitle
 ### 6.12 Platform settings
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the "Platform Settings" screen for the Smart Teacher super admin. Sidebar with Platform
 Settings active.
@@ -685,7 +749,11 @@ preferences.", and an #E3F2FD pill reading "Coming soon".
 ### 7.1 School dashboard
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the school admin dashboard for Smart Teacher. Sidebar for a school admin (Dashboard,
 Students, Teachers, Classes & Sections, Timetable, Library, Settings) with Dashboard active. The
@@ -717,7 +785,11 @@ each with a #2196F3 link, and completed steps marked with a green #16A34A check.
 ### 7.2 Students
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the "Students" screen for a Smart Teacher school admin. Sidebar with Students active.
 
@@ -750,7 +822,11 @@ yet", body "Add students one at a time, or import a CSV to onboard a whole class
 ### 7.3 Bulk import flow
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the three steps of the CSV bulk-import flow used by a Smart Teacher school admin to onboard
 students (the same flow is reused for teachers). Show all three as full page states with a step
@@ -783,7 +859,11 @@ its error, a ghost "Download error report" link, and two buttons: #2196F3 "Go to
 ### 7.4 Teachers
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the "Teachers" screen for a Smart Teacher school admin. Sidebar with Teachers active.
 
@@ -813,7 +893,11 @@ your teaching staff, then assign them to classes and subjects."
 ### 7.5 Teacher detail
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the teacher profile screen for a Smart Teacher school admin, where teaching assignments are
 managed.
@@ -845,7 +929,11 @@ yet", body "Assign this teacher to a section and subject using the form."
 ### 7.6 Classes and sections
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the "Classes & Sections" screen for a Smart Teacher school admin. Sidebar with Classes &
 Sections active.
@@ -873,7 +961,11 @@ section to start placing students and assigning teachers.", #2196F3 button "Crea
 ### 7.7 Timetable
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design two versions of the "Timetable" screen for a Smart Teacher school admin. Sidebar with
 Timetable active.
@@ -897,7 +989,11 @@ spanning two periods, and a break row spanning the full width in a flat #F5F8FC 
 ### 7.8 Library (school-side browse)
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the "Library" screen a Smart Teacher school admin or teacher uses to browse the video and
 PDF content their school is licensed for. Sidebar with Library active.
@@ -922,7 +1018,11 @@ set up." — no action button, since the viewer cannot fix it themselves.
 ### 7.9 Curriculum browse, video player, PDF viewer
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design three linked content screens for a Smart Teacher school user.
 
@@ -953,7 +1053,11 @@ page navigation strip beneath it.
 ### 7.10 School settings
 
 ```
-STYLE: [paste the STYLE line from §2]
+STYLE: Smart Teacher admin console. Material-style SaaS admin, Inter. Sidebar #0D47A1 with white
+text; canvas #F5F8FC; white cards, 1px #E2E8F0 border, 8px radius, subtle shadow. Primary #2196F3,
+soft accent #90CAF9, tinted fills and selected rows #E3F2FD. Text #0F172A, muted #64748B. Status:
+green #16A34A, amber #F59E0B, red #DC2626. 14px body, 12px uppercase table headers, pill badges,
+48px table rows. Desktop web 1440px.
 
 Design the "Settings" screen for a Smart Teacher school admin. Sidebar with Settings active.
 

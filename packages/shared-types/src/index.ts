@@ -60,6 +60,12 @@ export interface AuthUserSchool {
   status: SchoolStatus;
 }
 
+export interface InvitePreview {
+  name: string;
+  email: string;
+  schoolName: string;
+}
+
 export interface AuthUser {
   id: string;
   email: string;
@@ -731,6 +737,35 @@ export interface DashboardStats {
   pendingInvites: number;
   classes: number | null;
   latestTimetable: LatestTimetableLink | null;
+}
+
+export interface PlatformDashboardStats {
+  schools: number;
+  curricula: number;
+  videos: number;
+  documents: number;
+  recentSchools: Array<Pick<School, 'id' | 'name' | 'slug' | 'status'>>;
+  contentPipeline: {
+    ready: number;
+    processing: number;
+    queued: number;
+    failed: number;
+  };
+}
+
+export interface SchoolEntitlementOverview {
+  schoolId: string;
+  schoolName: string;
+  schoolSlug: string;
+  schoolStatus: SchoolStatus;
+  studentCurricula: number;
+  teacherCurricula: number;
+  grantedCurricula: number;
+  totalCurricula: number;
+}
+
+export interface EntitlementOverview {
+  schools: SchoolEntitlementOverview[];
 }
 
 export interface ApiErrorResponse {

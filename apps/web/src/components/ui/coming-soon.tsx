@@ -17,8 +17,9 @@ export function ComingSoon({ title, description, icon }: ComingSoonProps) {
       <PageHeader title={title} description={description} />
       <EmptyState
         icon={icon}
-        title="Coming soon"
-        description="This section isn't available yet. It will light up once the feature ships."
+        title={title}
+        description={description}
+        action={<span className="rounded-full bg-brand-tint px-3 py-1 text-xs font-semibold text-brand-navy">Coming soon</span>}
       />
     </>
   );

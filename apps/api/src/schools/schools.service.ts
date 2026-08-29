@@ -21,6 +21,21 @@ export class SchoolsService {
     private readonly invitesService: InvitesService,
   ) {}
 
+  async getPlatformOverview(): Promise<{
+    total: number;
+    recent: Array<Pick<SchoolEntity, 'id' | 'name' | 'slug' | 'status'>>;
+  }> {
+    const [total, recent] = await Promise.all([
+      this.prisma.school.count(),
+      this.prisma.school.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        select: { id: true, name: true, slug: true, status: true },
+      }),
+    ]);
+    return { total, recent };
+  }
+
   async create(dto: CreateSchoolDto): Promise<SchoolEntity> {
     const sendInvite = dto.sendInvite ?? true;
 

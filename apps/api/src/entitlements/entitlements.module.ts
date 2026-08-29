@@ -5,12 +5,13 @@ import { ContentEntitlementsService } from './content-entitlements.service';
 import { ActorContentScopeService } from './actor-content-scope.service';
 import { ContentEntitlementsAdminService } from './content-entitlements-admin.service';
 import { EntitlementsAdminController } from './entitlements-admin.controller';
+import { EntitlementsOverviewAdminController } from './entitlements-overview-admin.controller';
 import { ContentImpactController } from './content-impact.controller';
 import { ContentImpactService } from './content-impact.service';
 
 @Module({
   imports: [StudentsModule, TeachersModule],
-  controllers: [EntitlementsAdminController, ContentImpactController],
+  controllers: [EntitlementsAdminController, EntitlementsOverviewAdminController, ContentImpactController],
   providers: [
     ContentEntitlementsService,
     ActorContentScopeService,

@@ -89,6 +89,7 @@ const MATRIX: MatrixRow[] = [
   { key: 'POST /auth/login', request: { method: 'post', path: '/auth/login' }, access: 'public' },
   { key: 'POST /auth/refresh', request: { method: 'post', path: '/auth/refresh' }, access: 'public' },
   { key: 'POST /auth/set-password', request: { method: 'post', path: '/auth/set-password' }, access: 'public' },
+  { key: 'GET /auth/invite', request: { method: 'get', path: '/auth/invite?token=invalid' }, access: 'public' },
   {
     key: 'POST /auth/forgot-password',
     request: { method: 'post', path: '/auth/forgot-password' },
@@ -179,6 +180,11 @@ const MATRIX: MatrixRow[] = [
     key: 'GET /admin/stats',
     request: { method: 'get', path: '/admin/stats' },
     access: { allow: [Role.SCHOOL_ADMIN] },
+  },
+  {
+    key: 'GET /admin/platform-stats',
+    request: { method: 'get', path: '/admin/platform-stats' },
+    access: { allow: [Role.SUPER_ADMIN] },
   },
   {
     key: 'GET /admin/schools',
@@ -509,6 +515,7 @@ const MATRIX: MatrixRow[] = [
 
   { key: 'GET /admin/documents', request: { method: 'get', path: '/admin/documents' }, access: { allow: [Role.SUPER_ADMIN] } },
   { key: 'GET /admin/documents/:id', request: { method: 'get', path: `/admin/documents/${MISSING_ID}` }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'GET /admin/documents/:id/download', request: { method: 'get', path: `/admin/documents/${MISSING_ID}/download` }, access: { allow: [Role.SUPER_ADMIN] } },
   { key: 'POST /admin/documents', request: { method: 'post', path: '/admin/documents', body: {} }, access: { allow: [Role.SUPER_ADMIN] } },
   { key: 'PATCH /admin/documents/:id', request: { method: 'patch', path: `/admin/documents/${MISSING_ID}`, body: {} }, access: { allow: [Role.SUPER_ADMIN] } },
   { key: 'POST /admin/documents/:id/uploaded', request: { method: 'post', path: `/admin/documents/${MISSING_ID}/uploaded`, body: {} }, access: { allow: [Role.SUPER_ADMIN] } },
@@ -530,6 +537,11 @@ const MATRIX: MatrixRow[] = [
   {
     key: 'GET /admin/schools/:schoolId/entitlements',
     request: { method: 'get', path: `/admin/schools/${MISSING_ID}/entitlements` },
+    access: { allow: [Role.SUPER_ADMIN] },
+  },
+  {
+    key: 'GET /admin/entitlements/overview',
+    request: { method: 'get', path: '/admin/entitlements/overview' },
     access: { allow: [Role.SUPER_ADMIN] },
   },
   {

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { CurriculumSchema } from '@smart-teacher/shared-types';
 import { SchemaForm } from './schema-form';
+import { Button } from '@/components/ui/button';
 
 export function SchemaActions({ schema }: { schema: CurriculumSchema }) {
   const router = useRouter(); const [editing, setEditing] = useState(false); const [error, setError] = useState<string | null>(null);
@@ -21,8 +22,8 @@ export function SchemaActions({ schema }: { schema: CurriculumSchema }) {
     router.refresh();
   }
   return <div className="mt-4 grid gap-3">
-    <div className="flex gap-2"><button onClick={() => setEditing(!editing)} className="rounded border px-3 py-1.5 text-sm">{editing ? 'Cancel edit' : 'Edit'}</button><button onClick={clone} className="rounded border px-3 py-1.5 text-sm">Clone</button><button onClick={remove} disabled={schema.curriculumCount > 0} title={schema.curriculumCount > 0 ? 'This schema is in use' : undefined} className="rounded border border-red-200 px-3 py-1.5 text-sm text-red-700 disabled:opacity-40">Delete</button></div>
-    {error && <p className="text-sm text-red-600">{error}</p>}
+    <div className="flex flex-wrap gap-2"><Button variant="secondary" className="h-9 px-3" onClick={() => setEditing(!editing)}>{editing ? 'Cancel edit' : 'Edit'}</Button><Button variant="ghost" className="h-9 px-3" onClick={clone}>Clone</Button><Button variant="ghost" className="h-9 px-3 text-status-danger hover:bg-red-50 hover:text-status-danger" onClick={remove} disabled={schema.curriculumCount > 0} title={schema.curriculumCount > 0 ? 'This schema is in use' : undefined}>Delete</Button></div>
+    {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-status-danger">{error}</p>}
     {editing && <SchemaForm schema={schema} onDone={() => setEditing(false)} />}
   </div>;
 }

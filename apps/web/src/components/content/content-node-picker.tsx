@@ -104,7 +104,7 @@ export function ContentNodePicker({
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <label className="grid gap-1 text-sm">
+      <label className="grid gap-1 text-sm font-medium text-ink">
         Curriculum
         <select
           value={curriculumId}
@@ -115,7 +115,7 @@ export function ContentNodePicker({
             // a curriculum the operator is no longer looking at.
             selectNode('', event.target.value);
           }}
-          className="rounded border px-3 py-2"
+          className="field font-normal"
         >
           <option value="">Choose curriculum</option>
           {curricula.map((curriculum) => (
@@ -128,15 +128,15 @@ export function ContentNodePicker({
         </select>
       </label>
 
-      <label className="grid gap-1 text-sm">
-        Topic
+      <label className="grid gap-1 text-sm font-medium text-ink">
+        Content node
         <select
           name={name}
           required={required}
           value={nodeId}
           onChange={(event) => selectNode(event.target.value)}
           disabled={!curriculumId || loading}
-          className="rounded border px-3 py-2 disabled:bg-gray-50"
+          className="field font-normal disabled:bg-surface-low"
         >
           <option value="">{loading ? 'Loading…' : 'Choose where it belongs'}</option>
           {nodes.map((node) => (
@@ -149,7 +149,7 @@ export function ContentNodePicker({
         </select>
       </label>
 
-      {error && <p className="text-sm text-red-600 md:col-span-2">{error}</p>}
+      {error && <p className="text-sm text-status-danger md:col-span-2">{error}</p>}
       {!error && !loading && curriculumId && !hasPlaceToFile && (
         <p className="text-sm text-amber-700 md:col-span-2">
           This curriculum has no level that can hold videos yet. Add one in the curriculum builder

@@ -11,8 +11,8 @@ export function UploadProgressBar({ percent, label }: UploadProgressBarProps) {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between text-sm">
-        <span className="text-gray-700">{label}</span>
-        <span className="tabular-nums text-gray-500">{percent}%</span>
+        <span className="text-ink">{label}</span>
+        <span className="tabular-nums text-ink-muted">{percent}%</span>
       </div>
       <div
         role="progressbar"
@@ -20,10 +20,10 @@ export function UploadProgressBar({ percent, label }: UploadProgressBarProps) {
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label={label}
-        className="h-2 w-full overflow-hidden rounded-full bg-gray-200"
+        className="h-2 w-full overflow-hidden rounded-full bg-brand-tint"
       >
         <div
-          className="h-full rounded-full bg-gray-900 transition-all duration-200"
+          className="h-full rounded-full bg-brand-blue transition-all duration-200"
           style={{ width: `${percent}%` }}
         />
       </div>

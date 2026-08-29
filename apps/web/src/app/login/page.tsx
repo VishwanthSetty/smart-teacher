@@ -1,5 +1,6 @@
 import { toSafeRedirect } from '@/lib/safe-redirect';
 import { LoginForm } from './_components/login-form';
+import { AuthShell } from '@/components/auth/auth-shell';
 
 // A server component so `next` arrives as a plain prop. Reading it with
 // useSearchParams() in the client form would force a <Suspense> boundary here to keep
@@ -10,8 +11,8 @@ export default function LoginPage({
   searchParams: { next?: string | string[] };
 }) {
   return (
-    <main className="flex min-h-screen items-center justify-center px-4">
+    <AuthShell>
       <LoginForm redirectTo={toSafeRedirect(searchParams.next)} />
-    </main>
+    </AuthShell>
   );
 }

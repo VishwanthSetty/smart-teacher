@@ -85,6 +85,26 @@ describe('Content entitlements (e2e)', () => {
     expect(res.body).toEqual([]);
   });
 
+  it('returns entitlement coverage for every school to SUPER_ADMIN', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/admin/entitlements/overview')
+      .set('Authorization', `Bearer ${asSuperAdmin()}`)
+      .expect(200);
+
+    expect(res.body.schools).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          schoolId: schoolBId,
+          schoolSlug: 'demo-school-b',
+          grantedCurricula: 0,
+          studentCurricula: 0,
+          teacherCurricula: 0,
+          totalCurricula: expect.any(Number),
+        }),
+      ]),
+    );
+  });
+
   it('opens up content to a school the moment an entitlement is granted, and closes it on revoke', async () => {
     const before = await request(app.getHttpServer())
       .get('/videos')

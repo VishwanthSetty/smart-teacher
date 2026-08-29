@@ -3,18 +3,23 @@
 import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { PasswordInput } from '@/components/ui/password-input';
+import type { InvitePreview } from '@smart-teacher/shared-types';
 
 interface SetPasswordFormProps {
   token: string;
+  preview: InvitePreview;
 }
 
-export function SetPasswordForm({ token }: SetPasswordFormProps) {
+export function SetPasswordForm({ token, preview }: SetPasswordFormProps) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isExpired, setIsExpired] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const strength = [password.length >= 8, /[a-z]/i.test(password), /\d/.test(password), /[^a-z0-9]/i.test(password)].filter(Boolean).length;
+  const strengthLabels = ['Weak', 'Weak', 'Fair', 'Good', 'Strong'];
+  const strengthColors = ['bg-surface-border', 'bg-status-danger', 'bg-status-warning', 'bg-brand-soft', 'bg-status-success'];
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -78,9 +83,10 @@ export function SetPasswordForm({ token }: SetPasswordFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="inline-flex max-w-full rounded-full bg-brand-tint px-3 py-1 font-mono text-xs text-brand-navy">{preview.email}</div>
       <div className="space-y-1">
-        <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-          Password
+        <label htmlFor="password" className="field-label">
+          Create password
         </label>
         <PasswordInput
           id="password"
@@ -90,9 +96,17 @@ export function SetPasswordForm({ token }: SetPasswordFormProps) {
           onChange={(e) => setPassword(e.target.value)}
         />
       </div>
+      <div>
+        <div className="grid grid-cols-4 gap-1">
+          {[1, 2, 3, 4].map((segment) => (
+            <span key={segment} className={`h-1 rounded-full ${segment <= strength ? strengthColors[strength] : 'bg-surface-border'}`} />
+          ))}
+        </div>
+        <div className="mt-1 text-right text-xs text-ink-muted">{strengthLabels[strength]}</div>
+      </div>
 
       <div className="space-y-1">
-        <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="confirmPassword" className="field-label">
           Confirm password
         </label>
         <PasswordInput
@@ -104,15 +118,16 @@ export function SetPasswordForm({ token }: SetPasswordFormProps) {
         />
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-status-danger">{error}</p>}
 
       <button
         type="submit"
         disabled={isSubmitting}
-        className="w-full rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+        className="h-11 w-full rounded-lg bg-brand-blue px-3 text-sm font-medium text-white hover:bg-brand-navy disabled:opacity-50"
       >
-        {isSubmitting ? 'Setting password…' : 'Set password'}
+        {isSubmitting ? 'Activating…' : 'Activate account'}
       </button>
+      <p className="text-center text-xs text-ink-muted">Your school administrator can never see your password.</p>
     </form>
   );
 }

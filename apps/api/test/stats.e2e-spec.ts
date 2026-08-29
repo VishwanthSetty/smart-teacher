@@ -82,4 +82,25 @@ describe('Dashboard stats (e2e)', () => {
     expect(demoSchoolB.body.teachers).toBe(1);
     expect(demoSchool.body.students).toBeGreaterThan(demoSchoolB.body.students);
   });
+
+  it('returns platform totals only to a SUPER_ADMIN', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/admin/platform-stats')
+      .set('Authorization', `Bearer ${tokens[Role.SUPER_ADMIN]}`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      schools: expect.any(Number),
+      curricula: expect.any(Number),
+      videos: expect.any(Number),
+      documents: expect.any(Number),
+      recentSchools: expect.any(Array),
+      contentPipeline: {
+        ready: expect.any(Number),
+        processing: expect.any(Number),
+        queued: expect.any(Number),
+        failed: expect.any(Number),
+      },
+    });
+  });
 });

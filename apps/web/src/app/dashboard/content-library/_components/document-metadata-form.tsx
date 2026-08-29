@@ -90,14 +90,14 @@ export function DocumentMetadataForm(props: Props) {
   }
 
   return (
-    <form onSubmit={submit} className="grid gap-4 rounded-lg border bg-white p-5">
-      <label className="grid gap-1 text-sm">
+    <form onSubmit={submit} className="grid gap-4 rounded-card border border-surface-border bg-white p-5 shadow-card">
+      <label className="grid gap-1 text-sm font-medium text-ink">
         Title
-        <input required name="title" defaultValue={document?.title} className="rounded border px-3 py-2" />
+        <input required name="title" defaultValue={document?.title} className="field font-normal" />
       </label>
-      <label className="grid gap-1 text-sm">
+      <label className="grid gap-1 text-sm font-medium text-ink">
         Description
-        <textarea name="description" defaultValue={document?.description ?? ''} className="rounded border px-3 py-2" />
+        <textarea name="description" defaultValue={document?.description ?? ''} className="min-h-24 rounded-lg border border-surface-border px-3 py-2 font-normal outline-none focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/15" />
       </label>
       <ContentNodePicker
         curricula={curricula}
@@ -110,10 +110,10 @@ export function DocumentMetadataForm(props: Props) {
           <input required name="file" type="file" accept="application/pdf,.pdf" />
         </label>
       )}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-status-danger">{error}</p>}
       <button
         disabled={busy}
-        className="w-fit rounded bg-gray-900 px-4 py-2 text-white disabled:opacity-50"
+        className="ml-auto h-10 w-fit rounded-lg bg-brand-blue px-4 text-sm font-medium text-white hover:bg-brand-navy disabled:opacity-50"
       >
         {busy ? 'Saving…' : document ? 'Save metadata' : 'Create and upload'}
       </button>

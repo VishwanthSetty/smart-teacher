@@ -92,6 +92,10 @@ export class DocumentsService {
     private readonly nodeUsability: ContentNodeUsabilityService,
   ) {}
 
+  countAll(): Promise<number> {
+    return this.prisma.document.count();
+  }
+
   async findAllVisibleTo(actor: AuthenticatedUser): Promise<DocumentEntity[]> {
     const scope = await this.contentScope.resolve(actorScopeOf(actor));
     const rows = await this.prisma.document.findMany({
@@ -179,6 +183,22 @@ export class DocumentsService {
     });
     if (row === null) throw new NotFoundException('Document not found');
     return { ...toAdminDocumentEntity(row), sourceKey: row.sourceKey, updatedAt: row.updatedAt };
+  }
+
+  async createDownloadForAdmin(id: string): Promise<DocumentDownloadEntity> {
+    const row = await this.prisma.document.findFirst({
+      where: { id, status: DocumentStatus.READY },
+      select: { title: true, sourceKey: true },
+    });
+    if (row?.sourceKey === null || row?.sourceKey === undefined) {
+      throw new NotFoundException('Document not found');
+    }
+    const download = await this.storage.createPresignedDownload(row.sourceKey);
+    return {
+      url: download.url,
+      expiresInSecs: download.expiresInSecs,
+      fileName: `${safeFileName(row.title)}.pdf`,
+    };
   }
 
   async create(dto: CreateDocumentDto): Promise<DocumentUploadTicketEntity> {

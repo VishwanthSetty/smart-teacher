@@ -32,6 +32,6 @@ import { ContentNodeUsabilityService } from './content-node-usability.service';
   ],
   // Video and document ingest share the curriculum-owned destination-node rules through
   // this service; the authoring services themselves remain internal to the module.
-  exports: [ContentNodeUsabilityService],
+  exports: [ContentNodeUsabilityService, CurriculaService],
 })
 export class CurriculumModule {}

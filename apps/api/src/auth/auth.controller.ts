@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { User } from '@prisma/client';
@@ -18,6 +18,8 @@ import { RefreshTokenPayload } from './types/refresh-token-payload.interface';
 import { InvitesService } from '../invites/invites.service';
 import { PasswordResetService, GENERIC_RESET_MESSAGE } from './password-reset.service';
 import { PasswordResetRequested } from './entities/password-reset-requested.entity';
+import { PreviewInviteQueryDto } from './dto/preview-invite-query.dto';
+import { InvitePreviewEntity } from '../invites/entities/invite-preview.entity';
 
 // @Public() is deliberately never applied at the class level here: RolesGuard reads it
 // with getAllAndOverride, so a class-level @Public would leak to `logout` (whose handler
@@ -77,6 +79,16 @@ export class AuthController {
   @ApiResponse({ status: 410, description: 'Invite token expired; ask an administrator to resend it.' })
   async setPassword(@Body() dto: SetPasswordDto) {
     await this.invitesService.redeem(dto.token, dto.password);
+  }
+
+  @Get('invite')
+  @Public()
+  @ApiResponse({ status: 200, type: InvitePreviewEntity })
+  @ApiResponse({ status: 400, description: 'Invite token invalid or already used.' })
+  @ApiResponse({ status: 403, description: 'The account\'s school is suspended.' })
+  @ApiResponse({ status: 410, description: 'Invite token expired.' })
+  previewInvite(@Query() query: PreviewInviteQueryDto): Promise<InvitePreviewEntity> {
+    return this.invitesService.preview(query.token);
   }
 
   @Post('forgot-password')

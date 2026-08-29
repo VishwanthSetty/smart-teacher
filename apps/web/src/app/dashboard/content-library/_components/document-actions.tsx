@@ -80,24 +80,24 @@ export function DocumentActions({ document }: { document: AdminDocumentDetail })
   }
 
   return (
-    <section className="space-y-4 rounded-lg border bg-white p-5">
-      <h2 className="font-semibold">File actions</h2>
+    <section className="space-y-4 rounded-card border border-surface-border bg-white p-5 shadow-card">
+      <h2 className="font-semibold text-ink">File</h2>
       {progress !== null && <UploadProgressBar percent={progress} label="Uploading PDF" />}
       {document.status !== DocumentStatus.READY && progress === null && (
-        <label className="inline-flex cursor-pointer rounded border px-3 py-2 text-sm font-medium hover:bg-gray-50">
+        <label className="inline-flex cursor-pointer rounded-lg border border-brand-blue px-3 py-2 text-sm font-medium text-brand-blue hover:bg-brand-tint">
           Replace PDF
           <input type="file" accept="application/pdf,.pdf" className="sr-only" onChange={replace} />
         </label>
       )}
       {document.status === DocumentStatus.READY && (
-        <p className="text-sm text-gray-600">A ready PDF cannot be replaced; delete it and create a new record instead.</p>
+        <p className="text-sm text-ink-muted">A ready PDF cannot be replaced; delete it and create a new record instead.</p>
       )}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-status-danger">{error}</p>}
       <button
         type="button"
         disabled={isDeleting}
         onClick={() => void remove()}
-        className="rounded border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+        className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-status-danger hover:bg-red-50 disabled:opacity-50"
       >
         {isDeleting ? 'Deleting…' : 'Delete document'}
       </button>

@@ -19,6 +19,20 @@ export type EnrollmentWithSection = Prisma.EnrollmentGetPayload<{
   include: { section: { include: { gradeLevel: true } } };
 }>;
 
+export type ActiveEnrollmentProfile = Prisma.EnrollmentGetPayload<{
+  select: {
+    id: true;
+    sectionId: true;
+    rollNumber: true;
+    section: {
+      select: {
+        name: true;
+        gradeLevel: { select: { id: true; name: true; rank: true } };
+      };
+    };
+  };
+}>;
+
 // The seam ActorContentScopeService depends on, and the only place that knows how an
 // enrollment is opened, closed and read. Kept small and framework-thin so both
 // StudentsService and the content-scope narrowing can share it without a cycle.
@@ -35,6 +49,23 @@ export class EnrollmentsService {
       select: { section: { select: { gradeLevelId: true } } },
     });
     return enrollment?.section.gradeLevelId ?? null;
+  }
+
+  activeProfileFor(userId: string): Promise<ActiveEnrollmentProfile | null> {
+    return this.prisma.enrollment.findFirst({
+      where: { userId, status: EnrollmentStatus.ACTIVE },
+      select: {
+        id: true,
+        sectionId: true,
+        rollNumber: true,
+        section: {
+          select: {
+            name: true,
+            gradeLevel: { select: { id: true, name: true, rank: true } },
+          },
+        },
+      },
+    });
   }
 
   async endActive(tx: TxClient, userId: string): Promise<void> {

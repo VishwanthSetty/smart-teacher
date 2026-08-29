@@ -1,4 +1,5 @@
 import { ResetPasswordForm } from './_components/reset-password-form';
+import { AuthShell } from '@/components/auth/auth-shell';
 
 interface ResetPasswordPageProps {
   searchParams: { token?: string };
@@ -8,15 +9,18 @@ export default function ResetPasswordPage({ searchParams }: ResetPasswordPagePro
   const token = searchParams.token;
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-sm space-y-4 rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
-        <h1 className="text-xl font-semibold">Set a new password</h1>
+    <AuthShell>
+      <div className="space-y-5">
+        <div>
+          <h1 className="text-2xl font-semibold text-ink">Choose a new password</h1>
+          <p className="mt-1 text-sm text-ink-muted">Use a strong password you haven’t used before.</p>
+        </div>
         {token ? (
           <ResetPasswordForm token={token} />
         ) : (
-          <p className="text-sm text-red-600">This reset link is invalid.</p>
+          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-status-danger">This reset link is invalid.</p>
         )}
       </div>
-    </main>
+    </AuthShell>
   );
 }

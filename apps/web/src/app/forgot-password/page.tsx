@@ -1,4 +1,5 @@
 import { ForgotPasswordForm } from './_components/forgot-password-form';
+import { AuthShell } from '@/components/auth/auth-shell';
 
 interface ForgotPasswordPageProps {
   searchParams: { schoolSlug?: string | string[] };
@@ -12,11 +13,14 @@ export default function ForgotPasswordPage({ searchParams }: ForgotPasswordPageP
   const schoolSlug = typeof raw === 'string' ? raw : '';
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-sm space-y-4 rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
-        <h1 className="text-xl font-semibold">Reset your password</h1>
+    <AuthShell>
+      <div className="space-y-5">
+        <div>
+          <h1 className="text-2xl font-semibold text-ink">Forgot your password?</h1>
+          <p className="mt-1 text-sm text-ink-muted">We’ll send you a secure reset link.</p>
+        </div>
         <ForgotPasswordForm initialSchoolSlug={schoolSlug} />
       </div>
-    </main>
+    </AuthShell>
   );
 }

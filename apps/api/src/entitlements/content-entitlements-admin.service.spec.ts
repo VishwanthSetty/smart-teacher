@@ -41,10 +41,11 @@ function curriculum(
 describe('ContentEntitlementsAdminService', () => {
   let service: ContentEntitlementsAdminService;
   let prisma: {
-    school: { count: jest.Mock };
-    curriculum: { findUnique: jest.Mock; findMany: jest.Mock };
+    school: { count: jest.Mock; findMany: jest.Mock };
+    curriculum: { count: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock };
     schoolContentEntitlement: {
       findMany: jest.Mock;
+      groupBy: jest.Mock;
       create: jest.Mock;
       createMany: jest.Mock;
       deleteMany: jest.Mock;
@@ -54,8 +55,9 @@ describe('ContentEntitlementsAdminService', () => {
 
   beforeEach(async () => {
     prisma = {
-      school: { count: jest.fn().mockResolvedValue(1) },
+      school: { count: jest.fn().mockResolvedValue(1), findMany: jest.fn() },
       curriculum: {
+        count: jest.fn(),
         findUnique: jest.fn().mockResolvedValue({
           status: CurriculumStatus.PUBLISHED,
           subject: { status: SubjectStatus.ACTIVE },
@@ -64,6 +66,7 @@ describe('ContentEntitlementsAdminService', () => {
       },
       schoolContentEntitlement: {
         findMany: jest.fn(),
+        groupBy: jest.fn(),
         create: jest.fn(),
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -83,6 +86,46 @@ describe('ContentEntitlementsAdminService', () => {
     prisma.schoolContentEntitlement.findMany.mockResolvedValue([ROW]);
 
     await expect(service.listForSchool('school-a')).resolves.toEqual([ENTITY]);
+  });
+
+  it('summarizes grant coverage and audience counts for every school', async () => {
+    prisma.school.findMany.mockResolvedValue([
+      { id: 'school-a', name: 'Alpha', slug: 'alpha', status: 'ACTIVE' },
+      { id: 'school-b', name: 'Beta', slug: 'beta', status: 'SUSPENDED' },
+    ]);
+    prisma.curriculum.count.mockResolvedValue(6);
+    prisma.schoolContentEntitlement.groupBy.mockResolvedValue([
+      { schoolId: 'school-a', _count: { _all: 2 } },
+    ]);
+    prisma.schoolContentEntitlement.findMany.mockResolvedValue([
+      { schoolId: 'school-a', curriculum: { audience: ContentAudience.STUDENT } },
+      { schoolId: 'school-a', curriculum: { audience: ContentAudience.TEACHER } },
+    ]);
+
+    await expect(service.getOverview()).resolves.toEqual({
+      schools: [
+        {
+          schoolId: 'school-a',
+          schoolName: 'Alpha',
+          schoolSlug: 'alpha',
+          schoolStatus: 'ACTIVE',
+          studentCurricula: 1,
+          teacherCurricula: 1,
+          grantedCurricula: 2,
+          totalCurricula: 6,
+        },
+        {
+          schoolId: 'school-b',
+          schoolName: 'Beta',
+          schoolSlug: 'beta',
+          schoolStatus: 'SUSPENDED',
+          studentCurricula: 0,
+          teacherCurricula: 0,
+          grantedCurricula: 0,
+          totalCurricula: 6,
+        },
+      ],
+    });
   });
 
   it('404s on a school that does not exist rather than returning an empty list', async () => {

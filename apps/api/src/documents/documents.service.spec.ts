@@ -20,12 +20,12 @@ function adminRow(overrides: Record<string, unknown> = {}) {
 describe('DocumentsService', () => {
   const prisma = {
     document: {
-      create: jest.fn(), update: jest.fn(), findUnique: jest.fn(), delete: jest.fn(),
+      create: jest.fn(), update: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(), delete: jest.fn(),
     },
     $transaction: jest.fn(),
   };
   const storage = {
-    createPresignedUpload: jest.fn(), statObject: jest.fn(), deletePrefix: jest.fn(),
+    createPresignedUpload: jest.fn(), createPresignedDownload: jest.fn(), statObject: jest.fn(), deletePrefix: jest.fn(),
   };
   const nodeUsability = { assertNodeUsable: jest.fn() };
   const service = new DocumentsService(
@@ -63,5 +63,22 @@ describe('DocumentsService', () => {
     prisma.document.findUnique.mockResolvedValue({ ...adminRow({ status: DocumentStatus.READY }), sourceKey: 'documents/document-1/source.pdf' });
     await expect(service.createUploadUrl('document-1', { contentType: 'application/pdf', sizeBytes: 100 })).rejects.toBeInstanceOf(ConflictException);
     expect(storage.createPresignedUpload).not.toHaveBeenCalled();
+  });
+
+  it('issues an admin preview URL only for a ready document with a source', async () => {
+    prisma.document.findFirst.mockResolvedValue({
+      title: 'Grade 5 / Fractions',
+      sourceKey: 'documents/document-1/source.pdf',
+    });
+    storage.createPresignedDownload.mockResolvedValue({
+      url: 'https://storage.test/document.pdf',
+      expiresInSecs: 900,
+    });
+
+    await expect(service.createDownloadForAdmin('document-1')).resolves.toEqual({
+      url: 'https://storage.test/document.pdf',
+      expiresInSecs: 900,
+      fileName: 'Grade-5-Fractions.pdf',
+    });
   });
 });

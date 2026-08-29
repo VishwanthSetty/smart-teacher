@@ -37,7 +37,7 @@ function GridCheckbox({
         }
       }}
       onChange={(event) => onChange(event.target.checked)}
-      className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500 disabled:opacity-30"
+      className="h-4 w-4 rounded border-surface-border text-brand-blue focus:ring-brand-blue disabled:opacity-30"
     />
   );
 }
@@ -217,11 +217,11 @@ export function EntitlementMatrix({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-card border border-surface-border bg-white shadow-card">
         <table className="w-full border-collapse text-left text-sm">
-          <thead className="border-b border-gray-200 text-gray-500">
+          <thead className="border-b border-surface-border bg-slate-50/70 text-xs uppercase tracking-wider text-ink-muted">
             <tr>
-              <th scope="col" className="sticky left-0 bg-white px-4 py-3 font-medium">
+              <th scope="col" className="sticky left-0 bg-slate-50 px-4 py-3 font-semibold">
                 <label className="flex items-center gap-2">
                   <GridCheckbox
                     checked={allChecked}
@@ -233,7 +233,7 @@ export function EntitlementMatrix({
                 </label>
               </th>
               {sortedSubjects.map((subject) => (
-                <th key={subject.id} scope="col" className="px-4 py-3 text-center font-medium">
+                <th key={subject.id} scope="col" className="px-4 py-3 text-center font-semibold">
                   {subject.name}
                 </th>
               ))}
@@ -246,7 +246,7 @@ export function EntitlementMatrix({
               const rowChecked = rowIds.length > 0 && rowSelectedCount === rowIds.length;
 
               return (
-                <tr key={gradeLevel.id} className="border-b border-gray-100 last:border-0">
+                <tr key={gradeLevel.id} className="h-12 border-b border-surface-border/70 last:border-0 hover:bg-brand-tint/40">
                   <th scope="row" className="sticky left-0 bg-white px-4 py-3 text-left font-medium">
                     <label className="flex items-center gap-2">
                       <GridCheckbox
@@ -266,7 +266,7 @@ export function EntitlementMatrix({
                       return (
                         <td key={subject.id} className="px-4 py-3 text-center">
                           <span
-                            className="text-xs text-gray-300"
+                            className="text-xs text-slate-300"
                             title="No curriculum authored for this grade level and subject"
                           >
                             —
@@ -298,7 +298,7 @@ export function EntitlementMatrix({
               );
             })}
           </tbody>
-          <tfoot className="border-t border-gray-200 text-gray-500">
+          <tfoot className="border-t border-surface-border bg-slate-50/70 text-ink-muted">
             <tr>
               <th scope="row" className="sticky left-0 bg-white px-4 py-3 text-left font-medium">
                 All grade levels
@@ -325,25 +325,25 @@ export function EntitlementMatrix({
         </table>
       </div>
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-ink-muted">
         A dash means no curriculum has been authored for that grade level and subject yet —{' '}
-        <Link href="/dashboard/curriculum" className="underline">
+        <Link href="/dashboard/curriculum" className="font-medium text-brand-blue hover:text-brand-navy">
           create one
         </Link>
         .
       </p>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-sm">
-        <p className="text-sm text-gray-600">
+      <div className="sticky bottom-20 flex flex-wrap items-center justify-between gap-3 rounded-card border border-surface-border bg-white px-4 py-3 shadow-overlay md:bottom-4">
+        <p className="text-sm text-ink-muted">
           {isDirty ? `${toGrant.length} to grant · ${toRevoke.length} to revoke` : 'No unsaved changes'}
         </p>
         <div className="flex items-center gap-2">
-          {error && <p className="max-w-xs text-right text-sm text-red-600">{error}</p>}
+          {error && <p className="max-w-xs text-right text-sm text-status-danger">{error}</p>}
           <button
             type="button"
             onClick={reset}
             disabled={!isDirty || isSaving}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100 disabled:opacity-50"
+            className="h-10 rounded-lg px-4 text-sm font-medium text-ink-muted hover:bg-brand-tint disabled:opacity-50"
           >
             Reset
           </button>
@@ -351,7 +351,7 @@ export function EntitlementMatrix({
             type="button"
             onClick={save}
             disabled={!isDirty || isSaving}
-            className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+            className="h-10 rounded-lg bg-brand-blue px-4 text-sm font-medium text-white hover:bg-brand-navy disabled:opacity-50"
           >
             {isSaving ? 'Saving…' : 'Save changes'}
           </button>

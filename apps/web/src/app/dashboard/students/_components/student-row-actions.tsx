@@ -1,10 +1,11 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
+import { MoreHorizontal } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { UserStatus, type Section, type Student } from '@smart-teacher/shared-types';
 
-export function StudentRowActions({ student, sections }: { student: Student; sections: Section[] }) {
+export function StudentRowActions({ student, sections, compact = false }: { student: Student; sections: Section[]; compact?: boolean }) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const [firstName, setFirstName] = useState(student.firstName ?? '');
@@ -13,6 +14,7 @@ export function StudentRowActions({ student, sections }: { student: Student; sec
   const [sectionId, setSectionId] = useState(student.enrollment?.sectionId ?? '');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const isDisabled = student.status === UserStatus.DISABLED;
   const statusLabel = isDisabled ? 'Reactivate' : 'Deactivate';
@@ -139,6 +141,15 @@ export function StudentRowActions({ student, sections }: { student: Student; sec
           Cancel
         </button>
       </form>
+    );
+  }
+
+  if (compact) {
+    return (
+      <div className="relative">
+        <button type="button" onClick={() => setIsMenuOpen((value) => !value)} className="rounded-lg p-2 text-ink-muted hover:bg-brand-tint" aria-label={`Actions for ${student.name}`}><MoreHorizontal className="h-4 w-4" /></button>
+        {isMenuOpen ? <div className="absolute right-0 top-9 z-20 w-44 rounded-card border border-surface-border bg-white py-1 shadow-overlay">{error ? <p className="px-3 py-2 text-xs text-status-danger">{error}</p> : null}<button type="button" onClick={() => void viewPassword()} className="block w-full px-3 py-2 text-left text-sm hover:bg-brand-tint">View password</button><button type="button" onClick={() => void resetPassword()} className="block w-full px-3 py-2 text-left text-sm hover:bg-brand-tint">Reset password</button><button type="button" onClick={() => { setIsEditing(true); setIsMenuOpen(false); }} className="block w-full px-3 py-2 text-left text-sm hover:bg-brand-tint">Edit</button><button type="button" onClick={() => void handleStatusToggle()} className="block w-full px-3 py-2 text-left text-sm text-status-danger hover:bg-red-50">{statusLabel}</button></div> : null}
+      </div>
     );
   }
 

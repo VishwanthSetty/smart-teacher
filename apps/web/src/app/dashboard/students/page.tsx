@@ -1,13 +1,19 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Role, UserStatus, type Student } from '@smart-teacher/shared-types';
+import { Plus, Upload, Users } from 'lucide-react';
 import { canRoleAccess } from '@/lib/nav';
 import { getAccessToken, requireUser } from '@/lib/session';
 import { apiListSections, apiListStudents } from '@/lib/api-client';
 import { PageHeader } from '@/components/ui/page-header';
+import { Avatar } from '@/components/ui/avatar';
+import { ButtonLink } from '@/components/ui/button';
+import { StatusBadge } from '@/components/ui/badge';
+import { EmptyState } from '@/components/ui/empty-state';
 import { CreateStudentForm } from './_components/create-student-form';
 import { StudentRowActions } from './_components/student-row-actions';
 import { BulkImportPanel } from './_components/bulk-import-panel';
+import { MobileStudentFilters } from './_components/mobile-student-filters';
 
 const ROUTE = '/dashboard/students';
 const PAGE_SIZE = 20;
@@ -33,7 +39,7 @@ export default async function StudentsPage({
   // The API is the real boundary; this only stops a user landing on a page whose data
   // calls would 403 (mirrors the guard in dashboard/schools/page.tsx).
   if (!canRoleAccess(user.role, ROUTE)) {
-    redirect('/dashboard');
+    redirect('/dashboard/forbidden');
   }
   const isAdmin = user.role === Role.SCHOOL_ADMIN;
   const accessToken = getAccessToken() ?? '';
@@ -75,13 +81,19 @@ export default async function StudentsPage({
 
       {isAdmin && (
         <>
-          <BulkImportPanel />
+          <div id="import-students" className="scroll-mt-24">
+            <BulkImportPanel />
+          </div>
 
-          <CreateStudentForm sections={sections} />
+          <div id="add-student" className="scroll-mt-24">
+            <CreateStudentForm sections={sections} />
+          </div>
         </>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <MobileStudentFilters sections={sections} status={status} sectionId={sectionId} search={search} />
+
+      <div className="hidden flex-wrap items-center justify-between gap-3 md:flex">
         <div className="flex items-center gap-2 text-sm">
           <span className="text-gray-500">Filter:</span>
           <Link href={filterHref()} className={!status ? 'font-medium' : 'text-gray-600 hover:text-gray-900'}>
@@ -145,7 +157,15 @@ export default async function StudentsPage({
         </form>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
+      {students.length === 0 ? (
+        <EmptyState
+          icon={<Users className="h-7 w-7" />}
+          title={search || sectionId || status ? 'No students match these filters' : 'No students yet'}
+          description={search || sectionId || status ? 'Try adjusting your search or clearing the filters.' : 'Add students one at a time or import a CSV to onboard a whole class.'}
+        />
+      ) : null}
+
+      <div className={`hidden overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm md:block ${students.length === 0 ? 'md:hidden' : ''}`}>
         <table className="w-full text-left text-sm">
           <thead className="border-b border-gray-200 text-xs uppercase tracking-wide text-gray-500">
             <tr>
@@ -158,13 +178,6 @@ export default async function StudentsPage({
             </tr>
           </thead>
           <tbody>
-            {students.length === 0 && (
-              <tr>
-                <td colSpan={isAdmin ? 6 : 5} className="px-4 py-6 text-center text-gray-500">
-                  {search || sectionId || status ? 'No students match this filter.' : 'No students yet.'}
-                </td>
-              </tr>
-            )}
             {students.map((student) => (
               <tr key={student.id} className="border-b border-gray-100 last:border-b-0">
                 <td className="px-4 py-3 text-gray-600">{student.enrollment?.rollNumber ?? '—'}</td>
@@ -185,6 +198,25 @@ export default async function StudentsPage({
         </table>
       </div>
 
+      {students.length > 0 ? (
+        <div className="grid gap-3 md:hidden">
+          {students.map((student) => (
+            <article key={student.id} className="rounded-card border border-surface-border bg-white p-4 shadow-card">
+              <div className="flex items-start gap-3">
+                <Avatar name={student.name} />
+                <div className="min-w-0 flex-1"><h2 className="truncate font-semibold text-ink">{student.name}</h2><p className="truncate text-sm text-ink-muted">{student.email}</p></div>
+                <StatusBadge status={student.status} />
+                {isAdmin ? <StudentRowActions student={student} sections={sections} compact /> : null}
+              </div>
+              <dl className="mt-4 grid gap-2 text-sm">
+                <div className="flex justify-between gap-4"><dt className="text-ink-muted">Section</dt><dd className="text-right font-medium text-ink">{student.enrollment ? `${student.enrollment.gradeLevelName} · ${student.enrollment.sectionName}` : '—'}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-ink-muted">Roll number</dt><dd className="font-medium text-ink">{student.enrollment?.rollNumber ?? '—'}</dd></div>
+              </dl>
+            </article>
+          ))}
+        </div>
+      ) : null}
+
       <div className="flex items-center justify-between text-sm text-gray-600">
         <span>
           Page {meta.page} of {Math.max(1, meta.totalPages)} · {meta.total} total
@@ -202,6 +234,19 @@ export default async function StudentsPage({
           )}
         </div>
       </div>
+
+      {isAdmin ? (
+        <div className="fixed inset-x-0 bottom-16 z-30 flex gap-2 border-t border-surface-border bg-white/95 p-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur md:hidden">
+          <ButtonLink href="#import-students" variant="secondary" className="flex-1">
+            <Upload className="h-4 w-4" aria-hidden="true" />
+            Import CSV
+          </ButtonLink>
+          <ButtonLink href="#add-student" className="flex-1">
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Add student
+          </ButtonLink>
+        </div>
+      ) : null}
     </div>
   );
 }

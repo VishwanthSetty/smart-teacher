@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../tenancy/tenant-context.service';
 import { MailService } from '../mail/mail.service';
 import { SUSPENDED_SCHOOL_MESSAGE } from '../auth/auth.service';
+import { InvitePreviewEntity } from './entities/invite-preview.entity';
 
 const INVITE_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const BCRYPT_ROUNDS = 10;
@@ -33,6 +34,25 @@ export class InvitesService {
       tokenHash: this.hash(token),
       expiresAt: new Date(Date.now() + INVITE_TOKEN_TTL_MS),
     };
+  }
+
+  async preview(token: string): Promise<InvitePreviewEntity> {
+    return this.tenantContext.runWithSystemBypass(async () => {
+      const user = await this.prisma.user.findUnique({
+        where: { inviteTokenHash: this.hash(token) },
+        include: { school: true },
+      });
+      if (!user || user.status !== UserStatus.PENDING || !user.school) {
+        throw new BadRequestException('This invite link is invalid or has already been used.');
+      }
+      if (user.school.status === SchoolStatus.SUSPENDED) {
+        throw new ForbiddenException(SUSPENDED_SCHOOL_MESSAGE);
+      }
+      if (!user.inviteTokenExpiresAt || user.inviteTokenExpiresAt.getTime() < Date.now()) {
+        throw new GoneException('This invite has expired. Ask your administrator to send a new invite.');
+      }
+      return { name: user.name, email: user.email, schoolName: user.school.name };
+    });
   }
 
   // Unauthenticated route (no tenant identity yet) — mirrors AuthService.validateUser's

@@ -2,7 +2,9 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Plan } from '@smart-teacher/shared-types';
 import { PasswordInput } from '@/components/ui/password-input';
+import { Button } from '@/components/ui/button';
 
 export function CreateSchoolForm() {
   const router = useRouter();
@@ -12,6 +14,7 @@ export function CreateSchoolForm() {
   const [adminEmail, setAdminEmail] = useState('');
   const [adminName, setAdminName] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+  const [plan, setPlan] = useState(Plan.FREE);
   const [sendInvite, setSendInvite] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -26,7 +29,6 @@ export function CreateSchoolForm() {
     }
 
     setIsSubmitting(true);
-
     const response = await fetch('/api/schools', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -36,11 +38,11 @@ export function CreateSchoolForm() {
         academicYear,
         adminEmail,
         adminName,
+        plan,
         ...(adminPassword ? { adminPassword } : {}),
         sendInvite,
       }),
     });
-
     setIsSubmitting(false);
 
     if (!response.ok) {
@@ -55,127 +57,63 @@ export function CreateSchoolForm() {
     setAdminEmail('');
     setAdminName('');
     setAdminPassword('');
+    setPlan(Plan.FREE);
     setSendInvite(true);
     router.refresh();
   }
 
   return (
     <form
+      id="create-school"
       onSubmit={handleSubmit}
-      className="space-y-4 rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
+      className="space-y-5 rounded-card border border-surface-border bg-white p-6 shadow-card"
     >
-      <h2 className="text-lg font-medium">Provision a school</h2>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="space-y-1">
-          <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-            School name
-          </label>
-          <input
-            id="name"
-            type="text"
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="slug" className="block text-sm font-medium text-gray-700">
-            Slug
-          </label>
-          <input
-            id="slug"
-            type="text"
-            required
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            placeholder="springfield-high"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="academicYear" className="block text-sm font-medium text-gray-700">
-            Academic year
-          </label>
-          <input
-            id="academicYear"
-            type="text"
-            required
-            value={academicYear}
-            onChange={(e) => setAcademicYear(e.target.value)}
-            placeholder="2025-2026"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="adminName" className="block text-sm font-medium text-gray-700">
-            School admin name
-          </label>
-          <input
-            id="adminName"
-            type="text"
-            required
-            value={adminName}
-            onChange={(e) => setAdminName(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
-          />
-        </div>
-
-        <div className="space-y-1 sm:col-span-2">
-          <label htmlFor="adminEmail" className="block text-sm font-medium text-gray-700">
-            School admin email
-          </label>
-          <input
-            id="adminEmail"
-            type="email"
-            required
-            value={adminEmail}
-            onChange={(e) => setAdminEmail(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
-          />
-        </div>
-
-        <div className="space-y-1 sm:col-span-2">
-          <label htmlFor="adminPassword" className="block text-sm font-medium text-gray-700">
-            Initial password (optional)
-          </label>
-          <PasswordInput
-            id="adminPassword"
-            value={adminPassword}
-            onChange={(e) => setAdminPassword(e.target.value)}
-            minLength={8}
-            placeholder="Leave blank to let the admin set one via the invite email"
-          />
-        </div>
-
-        <div className="sm:col-span-2">
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={sendInvite}
-              onChange={(e) => setSendInvite(e.target.checked)}
-              className="rounded border-gray-300"
-            />
-            {adminPassword
-              ? 'Email the admin a welcome notice'
-              : 'Send invite email (required if no password is set)'}
-          </label>
-        </div>
+      <div>
+        <h2 className="text-lg font-medium text-ink">Create a school</h2>
+        <p className="mt-1 text-sm text-ink-muted">Provision the tenant and its first school administrator.</p>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <label>
+          <span className="field-label">School name</span>
+          <input className="field" required value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Oakridge Public School" />
+        </label>
+        <label>
+          <span className="field-label">URL slug <span className="font-normal text-ink-muted">· lowercase, no spaces</span></span>
+          <input className="field font-mono text-xs" required value={slug} onChange={(event) => setSlug(event.target.value)} placeholder="oakridge-public" />
+        </label>
+        <label>
+          <span className="field-label">Academic year</span>
+          <input className="field" required value={academicYear} onChange={(event) => setAcademicYear(event.target.value)} placeholder="2026-2027" />
+        </label>
+        <label>
+          <span className="field-label">Admin email</span>
+          <input className="field" type="email" required value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} placeholder="admin@school.edu" />
+        </label>
+        <label>
+          <span className="field-label">Admin name</span>
+          <input className="field" required value={adminName} onChange={(event) => setAdminName(event.target.value)} placeholder="Full name" />
+        </label>
+        <label>
+          <span className="field-label">Plan</span>
+          <select className="field" value={plan} onChange={(event) => setPlan(event.target.value as Plan)}>
+            {Object.values(Plan).map((value) => <option key={value} value={value}>{value}</option>)}
+          </select>
+        </label>
+        <label className="lg:col-span-2">
+          <span className="field-label">Initial password <span className="font-normal text-ink-muted">(optional)</span></span>
+          <PasswordInput id="adminPassword" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} minLength={8} placeholder="Leave blank to let the admin set one via email" />
+        </label>
+        <label className="flex items-center gap-2 self-end pb-2 text-sm text-ink-muted">
+          <input type="checkbox" checked={sendInvite} onChange={(event) => setSendInvite(event.target.checked)} className="rounded border-surface-border text-brand-blue focus:ring-brand-blue" />
+          {adminPassword ? 'Email a welcome notice' : 'Send invite email'}
+        </label>
+      </div>
 
-      <button
-        type="submit"
-        disabled={isSubmitting}
-        className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-      >
-        {isSubmitting ? 'Creating…' : 'Create school'}
-      </button>
+      {error ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-status-danger">{error}</p> : null}
+      <div className="flex justify-end">
+        <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Creating…' : 'Create school'}</Button>
+      </div>
     </form>
   );
 }

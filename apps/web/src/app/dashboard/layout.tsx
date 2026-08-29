@@ -11,12 +11,12 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const user = await requireUser();
 
   return (
-    <div className="flex min-h-screen">
-      <AppSidebar role={user.role} />
-      <div className="flex min-h-screen flex-1 flex-col">
+    <div className="flex min-h-screen bg-surface-canvas">
+      <AppSidebar user={user} />
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col md:ml-[260px]">
         <AppHeader user={user} />
         <MobileNav role={user.role} />
-        <main className="flex-1 px-4 py-8 sm:px-6 lg:px-8">{children}</main>
+        <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-6 pb-24 sm:px-6 md:pb-8 lg:px-8 lg:py-8">{children}</main>
       </div>
     </div>
   );

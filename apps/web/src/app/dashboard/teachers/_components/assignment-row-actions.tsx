@@ -2,44 +2,19 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ConfirmationDialog } from '@/components/ui/confirmation-dialog';
 
 export function AssignmentRowActions({ assignmentId }: { assignmentId: string }) {
   const router = useRouter();
+  const [isOpen, setIsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  async function handleRemove() {
-    // No published-timetable warning yet — there is no Timetable model to check
-    // against (F-09). This confirm is the only guard until that lands.
-    if (!window.confirm('Remove this assignment?')) {
-      return;
-    }
-
-    setError(null);
-    setIsSubmitting(true);
+  async function handleRemove(): Promise<void> {
+    setError(null); setIsSubmitting(true);
     const response = await fetch(`/api/teacher-assignments/${assignmentId}`, { method: 'DELETE' });
     setIsSubmitting(false);
-
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({ message: 'Failed to remove assignment' }));
-      setError(body.message ?? 'Failed to remove assignment');
-      return;
-    }
-
-    router.refresh();
+    if (!response.ok) { const body = await response.json().catch(() => ({ message: 'Failed to remove assignment' })); setError(body.message ?? 'Failed to remove assignment'); return; }
+    setIsOpen(false); router.refresh();
   }
-
-  return (
-    <div className="flex items-center justify-end gap-2">
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      <button
-        type="button"
-        onClick={handleRemove}
-        disabled={isSubmitting}
-        className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100 disabled:opacity-50"
-      >
-        {isSubmitting ? '…' : 'Remove'}
-      </button>
-    </div>
-  );
+  return <>{error ? <span className="mr-2 text-xs text-status-danger">{error}</span> : null}<button type="button" onClick={() => setIsOpen(true)} className="rounded-lg px-3 py-2 text-sm font-medium text-status-danger hover:bg-red-50">Remove</button><ConfirmationDialog isOpen={isOpen} title="Remove teaching assignment?" description="The teacher will lose the library access granted by this assignment. Existing student and class records will not be changed." confirmLabel="Remove assignment" isDestructive isSubmitting={isSubmitting} onCancel={() => setIsOpen(false)} onConfirm={() => void handleRemove()} /></>;
 }

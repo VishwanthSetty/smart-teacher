@@ -12,15 +12,17 @@ interface StatTileProps {
 
 export function StatTile({ label, value, icon, hint, href }: StatTileProps) {
   const body = (
-    <div className="flex h-full flex-col gap-3 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500">{label}</span>
-        <span className="text-gray-400">{icon}</span>
-      </div>
-      <span className="text-3xl font-semibold tabular-nums text-gray-900">
+    <div className="flex h-full items-center gap-4 rounded-card border border-surface-border bg-white p-5 shadow-card transition hover:border-brand-soft">
+      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand-tint text-brand-blue">
+        {icon}
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="text-xs font-semibold uppercase tracking-wider text-ink-muted">{label}</span>
+      <span className="mt-1 text-[28px] font-semibold leading-none tabular-nums text-ink">
         {value === null ? '—' : value}
       </span>
-      {hint && <span className="text-xs text-gray-400">{hint}</span>}
+      {hint && <span className="mt-2 text-xs text-ink-muted">{hint}</span>}
+      </div>
     </div>
   );
 
@@ -29,7 +31,7 @@ export function StatTile({ label, value, icon, hint, href }: StatTileProps) {
   }
 
   return (
-    <Link href={href} className="block rounded-lg transition hover:opacity-80">
+    <Link href={href} className="block h-full rounded-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue">
       {body}
     </Link>
   );

@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { GrantEntitlementDto } from './dto/grant-entitlement.dto';
 import { ReplaceEntitlementsDto } from './dto/replace-entitlements.dto';
 import { EntitlementEntity } from './entities/entitlement.entity';
+import { EntitlementOverviewEntity } from './entities/entitlement-overview.entity';
 
 const ENTITLEMENT_SELECT = {
   id: true,
@@ -60,6 +61,48 @@ export class ContentEntitlementsAdminService {
     });
 
     return rows.map(toEntity);
+  }
+
+  async getOverview(): Promise<EntitlementOverviewEntity> {
+    const [schools, totalCurricula, grouped, audienceRows] = await Promise.all([
+      this.prisma.school.findMany({
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true, slug: true, status: true },
+      }),
+      this.prisma.curriculum.count(),
+      this.prisma.schoolContentEntitlement.groupBy({
+        by: ['schoolId'],
+        _count: { _all: true },
+      }),
+      this.prisma.schoolContentEntitlement.findMany({
+        select: { schoolId: true, curriculum: { select: { audience: true } } },
+      }),
+    ]);
+
+    const totals = new Map(grouped.map((row) => [row.schoolId, row._count._all]));
+    const audienceCounts = new Map<string, { student: number; teacher: number }>();
+    for (const row of audienceRows) {
+      const counts = audienceCounts.get(row.schoolId) ?? { student: 0, teacher: 0 };
+      if (row.curriculum.audience === 'STUDENT') counts.student += 1;
+      if (row.curriculum.audience === 'TEACHER') counts.teacher += 1;
+      audienceCounts.set(row.schoolId, counts);
+    }
+
+    return {
+      schools: schools.map((school) => {
+        const counts = audienceCounts.get(school.id) ?? { student: 0, teacher: 0 };
+        return {
+          schoolId: school.id,
+          schoolName: school.name,
+          schoolSlug: school.slug,
+          schoolStatus: school.status,
+          studentCurricula: counts.student,
+          teacherCurricula: counts.teacher,
+          grantedCurricula: totals.get(school.id) ?? 0,
+          totalCurricula,
+        };
+      }),
+    };
   }
 
   async grant(schoolId: string, dto: GrantEntitlementDto): Promise<EntitlementEntity> {

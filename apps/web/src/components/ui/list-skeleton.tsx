@@ -9,7 +9,7 @@ export function ListSkeleton({ rows = 5 }: { rows?: number }) {
         <Skeleton className="h-6 w-48" />
         <Skeleton className="h-4 w-72" />
       </div>
-      <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-4">
+      <div className="space-y-2 rounded-card border border-surface-border bg-white p-4 shadow-card">
         {Array.from({ length: rows }).map((_, index) => (
           <Skeleton key={index} className="h-10 w-full" />
         ))}

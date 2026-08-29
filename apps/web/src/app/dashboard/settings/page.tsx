@@ -9,7 +9,7 @@ const ROUTE = '/dashboard/settings';
 export default async function SettingsPage() {
   const user = await requireUser();
   if (!canRoleAccess(user.role, ROUTE)) {
-    redirect('/dashboard');
+    redirect('/dashboard/forbidden');
   }
 
   return (

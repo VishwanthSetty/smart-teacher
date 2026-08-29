@@ -126,6 +126,26 @@ describe('InvitesService', () => {
     });
   });
 
+  describe('preview', () => {
+    it('returns only the identity details needed by the activation screen', async () => {
+      prisma.user.findUnique.mockResolvedValue(baseUser());
+
+      await expect(service.preview('raw-token')).resolves.toEqual({
+        name: 'Tom Teacher',
+        email: 'teacher@smartteacher.dev',
+        schoolName: 'Springfield High',
+      });
+    });
+
+    it('rejects expired preview links with 410', async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        baseUser({ inviteTokenExpiresAt: new Date(Date.now() - 1000) }),
+      );
+
+      await expect(service.preview('raw-token')).rejects.toBeInstanceOf(GoneException);
+    });
+  });
+
   describe('resendForUser', () => {
     it('mints a new invite, overwrites the old hash, and re-sends the mail', async () => {
       const user = baseUser();

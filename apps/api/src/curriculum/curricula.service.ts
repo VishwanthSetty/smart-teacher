@@ -67,6 +67,10 @@ function toEntity(
 export class CurriculaService {
   constructor(private readonly prisma: PrismaService) {}
 
+  countAll(): Promise<number> {
+    return this.prisma.curriculum.count();
+  }
+
   async findAll(query: ListCurriculaQueryDto = new ListCurriculaQueryDto()): Promise<PaginatedCurriculaEntity> {
     const where: Prisma.CurriculumWhereInput = {
       ...(query.gradeLevelId ? { gradeLevelId: query.gradeLevelId } : {}),

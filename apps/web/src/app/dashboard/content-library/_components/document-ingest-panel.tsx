@@ -10,7 +10,7 @@ import { uploadWithProgress } from './upload-with-progress';
 
 export function DocumentIngestPanel({ curricula }: { curricula: Curriculum[] }) {
   const router = useRouter();
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(true);
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   async function handleSubmit(submission: DocumentMetadataSubmission) {
@@ -27,11 +27,11 @@ export function DocumentIngestPanel({ curricula }: { curricula: Curriculum[] }) 
       setError(uploadError instanceof Error ? uploadError.message : 'Upload failed'); setProgress(null); router.refresh();
     }
   }
-  return <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+  return <div className="rounded-card border border-surface-border bg-white shadow-card">
     <button type="button" onClick={() => setIsOpen((value) => !value)} className="flex w-full items-center justify-between p-6 text-left">
-      <div><h2 className="font-semibold">Add a PDF</h2><p className="text-sm text-gray-600">Upload lesson plans or teacher material directly to storage.</p></div>
+      <div><h2 className="font-semibold text-ink">Add a PDF</h2><p className="text-sm text-ink-muted">Upload lesson plans or teacher material directly to storage.</p></div>
       {isOpen ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
     </button>
-    {isOpen && <div className="space-y-4 border-t p-6">{progress === null ? <DocumentMetadataForm curricula={curricula} onSubmit={handleSubmit} /> : <UploadProgressBar percent={progress} label="Uploading PDF" />}{error && <p className="text-sm text-red-600">{error}</p>}</div>}
+    {isOpen && <div className="space-y-4 border-t border-surface-border p-6">{progress === null ? <DocumentMetadataForm curricula={curricula} onSubmit={handleSubmit} /> : <UploadProgressBar percent={progress} label="Uploading PDF" />}{error && <p className="text-sm text-status-danger">{error}</p>}</div>}
   </div>;
 }

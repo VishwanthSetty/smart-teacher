@@ -27,7 +27,7 @@ export function VideoIngestPanel({ curricula }: VideoIngestPanelProps) {
   const [error, setError] = useState<string | null>(null);
   // Collapsed by default — the catalogue browser below is the primary view; this is an
   // occasional action, not something that should push it off screen on every visit.
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(true);
 
   async function handleSubmit(submission: VideoMetadataSubmission) {
     setError(null);
@@ -92,7 +92,7 @@ export function VideoIngestPanel({ curricula }: VideoIngestPanelProps) {
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+    <div className="rounded-card border border-surface-border bg-white shadow-card">
       <button
         type="button"
         onClick={() => setIsOpen((open) => !open)}
@@ -100,21 +100,21 @@ export function VideoIngestPanel({ curricula }: VideoIngestPanelProps) {
         className="flex w-full items-center justify-between gap-4 p-6 text-left"
       >
         <div>
-          <h2 className="text-base font-semibold">Add a video</h2>
-          <p className="text-sm text-gray-600">
+          <h2 className="text-base font-semibold text-ink">Add a video</h2>
+          <p className="text-sm text-ink-muted">
             The file uploads straight to storage, then queues for processing. Where you file it
             in the curriculum decides which schools can be entitled to it.
           </p>
         </div>
         {isOpen ? (
-          <ChevronDown className="h-5 w-5 shrink-0 text-gray-400" aria-hidden="true" />
+          <ChevronDown className="h-5 w-5 shrink-0 text-ink-muted" aria-hidden="true" />
         ) : (
-          <ChevronRight className="h-5 w-5 shrink-0 text-gray-400" aria-hidden="true" />
+          <ChevronRight className="h-5 w-5 shrink-0 text-ink-muted" aria-hidden="true" />
         )}
       </button>
 
       {isOpen && (
-        <div className="space-y-4 border-t border-gray-200 p-6">
+        <div className="space-y-4 border-t border-surface-border p-6">
           {step.name === 'form' && (
             <VideoMetadataForm
               curricula={curricula}
@@ -129,7 +129,7 @@ export function VideoIngestPanel({ curricula }: VideoIngestPanelProps) {
 
           {step.name === 'done' && (
             <div className="space-y-3">
-              <p className="text-sm text-gray-700">
+              <p className="text-sm text-ink">
                 <span className="font-medium">{step.video.title}</span> uploaded and queued for
                 processing.
               </p>
@@ -139,14 +139,14 @@ export function VideoIngestPanel({ curricula }: VideoIngestPanelProps) {
                   setError(null);
                   setStep({ name: 'form' });
                 }}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100"
+                className="rounded-lg border border-brand-blue px-3 py-1.5 text-sm font-medium text-brand-blue hover:bg-brand-tint"
               >
                 Add another
               </button>
             </div>
           )}
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-status-danger">{error}</p>}
         </div>
       )}
     </div>

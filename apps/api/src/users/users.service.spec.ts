@@ -7,6 +7,7 @@ import { InvitesService } from '../invites/invites.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.interface';
 import { UsersService } from './users.service';
 import { UsersAccessPolicy } from './users-access.policy';
+import { EnrollmentsService } from '../students/enrollments.service';
 
 const actor: AuthenticatedUser = {
   sub: 'admin-1',
@@ -27,6 +28,7 @@ describe('UsersService', () => {
   };
   let mail: { sendUserInvite: jest.Mock };
   let invites: { mintToken: jest.Mock };
+  let enrollments: { activeProfileFor: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -42,6 +44,7 @@ describe('UsersService', () => {
         expiresAt: new Date('2026-08-01T00:00:00.000Z'),
       }),
     };
+    enrollments = { activeProfileFor: jest.fn().mockResolvedValue(null) };
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
@@ -50,6 +53,7 @@ describe('UsersService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: MailService, useValue: mail },
         { provide: InvitesService, useValue: invites },
+        { provide: EnrollmentsService, useValue: enrollments },
       ],
     }).compile();
 
@@ -164,6 +168,40 @@ describe('UsersService', () => {
         email: 'admin@smartteacher.dev',
         schoolId: 'school-1',
         school: { name: 'Springfield High' },
+        enrollment: null,
+      });
+      expect(enrollments.activeProfileFor).not.toHaveBeenCalled();
+    });
+
+    it('adds active enrollment context for a student actor', async () => {
+      prisma.school.findUnique.mockResolvedValue({
+        id: 'school-1',
+        name: 'Springfield High',
+        slug: 'springfield-high',
+        status: 'ACTIVE',
+      });
+      enrollments.activeProfileFor.mockResolvedValue({
+        id: 'enrollment-1',
+        sectionId: 'section-1',
+        rollNumber: '12',
+        section: {
+          name: 'A',
+          gradeLevel: { id: 'grade-5', name: 'Grade 5', rank: 5 },
+        },
+      });
+
+      const profile = await service.getProfile({ ...actor, role: Role.STUDENT });
+
+      expect(enrollments.activeProfileFor).toHaveBeenCalledWith('admin-1');
+      expect(profile.enrollment).toEqual({
+        id: 'enrollment-1',
+        sectionId: 'section-1',
+        sectionName: 'A',
+        sectionLabel: 'Grade 5 - A',
+        gradeLevelId: 'grade-5',
+        gradeLevelName: 'Grade 5',
+        gradeLevelRank: 5,
+        rollNumber: '12',
       });
     });
 
@@ -173,6 +211,8 @@ describe('UsersService', () => {
       expect(prisma.school.findUnique).not.toHaveBeenCalled();
       expect(profile.school).toBeNull();
       expect(profile.schoolId).toBeNull();
+      expect(profile.enrollment).toBeNull();
+      expect(enrollments.activeProfileFor).not.toHaveBeenCalled();
     });
   });
 

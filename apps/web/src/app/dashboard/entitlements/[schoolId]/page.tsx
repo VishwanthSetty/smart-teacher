@@ -60,7 +60,7 @@ export default async function SchoolEntitlementsPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <Link href={ROUTE} className="text-sm text-gray-600 hover:text-gray-900">
+      <Link href={ROUTE} className="text-sm font-medium text-brand-blue hover:text-brand-navy">
         ← All schools
       </Link>
 
@@ -69,9 +69,9 @@ export default async function SchoolEntitlementsPage({
         description="Curricula this school can reach. A grant covers the whole tree beneath it."
       />
 
-      <nav className="inline-flex w-fit rounded-lg border border-gray-200 bg-white p-1">
-        <Link href={`?audience=${ContentAudience.STUDENT}`} className={`rounded-md px-3 py-1.5 text-sm ${audience === ContentAudience.STUDENT ? 'bg-gray-900 text-white' : 'text-gray-600'}`}>Students</Link>
-        <Link href={`?audience=${ContentAudience.TEACHER}`} className={`rounded-md px-3 py-1.5 text-sm ${audience === ContentAudience.TEACHER ? 'bg-gray-900 text-white' : 'text-gray-600'}`}>Teachers</Link>
+      <nav className="inline-flex w-fit rounded-full border border-surface-border bg-white p-1 shadow-card">
+        <Link href={`?audience=${ContentAudience.STUDENT}`} className={`rounded-full px-4 py-2 text-sm font-medium ${audience === ContentAudience.STUDENT ? 'bg-brand-navy text-white' : 'text-ink-muted hover:bg-brand-tint'}`}>Students</Link>
+        <Link href={`?audience=${ContentAudience.TEACHER}`} className={`rounded-full px-4 py-2 text-sm font-medium ${audience === ContentAudience.TEACHER ? 'bg-brand-navy text-white' : 'text-ink-muted hover:bg-brand-tint'}`}>Teachers</Link>
       </nav>
 
       <EntitlementMatrix
@@ -84,7 +84,7 @@ export default async function SchoolEntitlementsPage({
       />
 
       {retiredGrantCount > 0 && (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-ink-muted">
           {retiredGrantCount} grant{retiredGrantCount === 1 ? '' : 's'} on retired subjects are preserved and not
           shown above.
         </p>

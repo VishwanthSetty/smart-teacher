@@ -10,6 +10,7 @@ import { UpdateDocumentDto } from './dto/update-document.dto';
 import { AdminDocumentDetailEntity } from './entities/admin-document-detail.entity';
 import { AdminDocumentEntity } from './entities/admin-document.entity';
 import { DocumentUploadTicketEntity } from './entities/document-upload-ticket.entity';
+import { DocumentDownloadEntity } from './entities/document-download.entity';
 import { PaginatedAdminDocumentsEntity } from './entities/paginated-admin-documents.entity';
 
 // Safe without @BypassTenantScope only while these platform-global reads never include
@@ -31,6 +32,12 @@ export class DocumentsAdminController {
   @ApiResponse({ status: 200, type: AdminDocumentDetailEntity })
   findOne(@Param('id') id: string): Promise<AdminDocumentDetailEntity> {
     return this.documents.findOneForAdmin(id);
+  }
+
+  @Get(':id/download')
+  @ApiResponse({ status: 200, type: DocumentDownloadEntity })
+  download(@Param('id') id: string): Promise<DocumentDownloadEntity> {
+    return this.documents.createDownloadForAdmin(id);
   }
 
   @Post()

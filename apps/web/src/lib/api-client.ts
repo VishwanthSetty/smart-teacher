@@ -1,6 +1,9 @@
 import type {
   AuthUser,
+  InvitePreview,
   DashboardStats,
+  PlatformDashboardStats,
+  EntitlementOverview,
   Entitlement,
   GradeLevel,
   PaginatedResponse,
@@ -146,6 +149,13 @@ export async function apiSetPassword(token: string, password: string): Promise<v
   }
 }
 
+export async function apiPreviewInvite(token: string): Promise<InvitePreview> {
+  const response = await fetch(`${API_URL}/auth/invite?token=${encodeURIComponent(token)}`, {
+    cache: 'no-store',
+  });
+  return handleResponse<InvitePreview>(response);
+}
+
 export async function apiForgotPassword(
   email: string,
   schoolSlug?: string,
@@ -187,6 +197,26 @@ export async function apiGetDashboardStats(accessToken: string): Promise<Dashboa
     cache: 'no-store',
   });
   return handleResponse<DashboardStats>(response);
+}
+
+export async function apiGetPlatformDashboardStats(
+  accessToken: string,
+): Promise<PlatformDashboardStats> {
+  const response = await fetch(`${API_URL}/admin/platform-stats`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  return handleResponse<PlatformDashboardStats>(response);
+}
+
+export async function apiGetEntitlementOverview(
+  accessToken: string,
+): Promise<EntitlementOverview> {
+  const response = await fetch(`${API_URL}/admin/entitlements/overview`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  return handleResponse<EntitlementOverview>(response);
 }
 
 export interface ListSchoolsQuery {
@@ -340,6 +370,18 @@ export async function apiGetUser(accessToken: string, id: string): Promise<User>
     cache: 'no-store',
   });
   return handleResponse<User>(response);
+}
+
+export async function apiResendUserInvite(accessToken: string, id: string): Promise<void> {
+  const response = await fetch(`${API_URL}/users/${id}/resend-invite`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ message: response.statusText }));
+    throw new ApiError(response.status, body.message ?? 'Request failed');
+  }
 }
 
 // No Content-Type header on purpose: undici derives the multipart boundary from the
@@ -1329,6 +1371,17 @@ export async function apiGetAdminDocument(accessToken: string, id: string): Prom
     headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store',
   });
   return handleResponse<AdminDocumentDetail>(response);
+}
+
+export async function apiGetAdminDocumentDownload(
+  accessToken: string,
+  id: string,
+): Promise<DocumentDownload> {
+  const response = await fetch(`${API_URL}/admin/documents/${id}/download`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  return handleResponse<DocumentDownload>(response);
 }
 
 export async function apiCreateDocument(

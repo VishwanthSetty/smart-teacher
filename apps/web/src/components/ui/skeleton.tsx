@@ -1,5 +1,5 @@
 import clsx from 'clsx';
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={clsx('animate-pulse rounded-md bg-gray-200', className)} />;
+  return <div aria-hidden="true" className={clsx('skeleton-shimmer rounded-md', className)} />;
 }
