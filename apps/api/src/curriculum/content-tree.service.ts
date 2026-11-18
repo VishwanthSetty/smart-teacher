@@ -89,7 +89,7 @@ export class ContentTreeService {
     actor: AuthenticatedUser,
     audience?: ContentAudience,
   ): Promise<CurriculumEntity[]> {
-    const scope = await this.contentScope.resolve(actorScopeOf(actor));
+    const scope = await this.contentScope.resolveBrowse(actorScopeOf(actor));
 
     const rows = await this.prisma.curriculum.findMany({
       // 'all' is SUPER_ADMIN, who authors the library and is not narrowed by entitlement.

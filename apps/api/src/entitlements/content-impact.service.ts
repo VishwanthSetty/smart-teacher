@@ -22,13 +22,17 @@ export class ContentImpactService {
       select: { schoolId: true },
     });
     const schoolIds = entitlements.map(({ schoolId }) => schoolId);
-    const [studentCount, teacherCount, videoCount, documentCount] = await this.prisma.$transaction([
-      this.prisma.enrollment.count({
+    // Grouped by student, not counted by row: a student in two sections of the same grade
+    // holds two ACTIVE enrollments but is one affected student.
+    const [students, teacherCount, videoCount, documentCount] = await this.prisma.$transaction([
+      this.prisma.enrollment.groupBy({
+        by: ['userId'],
         where: {
           schoolId: { in: schoolIds },
           status: EnrollmentStatus.ACTIVE,
           section: { gradeLevelId: curriculum.gradeLevelId },
         },
+        orderBy: { userId: 'asc' },
       }),
       this.prisma.teacherAssignment.count({
         where: {
@@ -46,7 +50,7 @@ export class ContentImpactService {
       gradeLevelId: curriculum.gradeLevelId,
       subjectId: curriculum.subjectId,
       schoolCount: schoolIds.length,
-      studentCount,
+      studentCount: students.length,
       videoCount,
       documentCount,
       teacherCount,

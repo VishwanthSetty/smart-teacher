@@ -28,6 +28,7 @@ function enrollmentFixture(overrides: Partial<Record<string, unknown>> = {}) {
     sectionId: section1.id,
     rollNumber: '1',
     status: EnrollmentStatus.ACTIVE,
+    isCurrent: true,
     startedAt: new Date('2026-07-01T00:00:00.000Z'),
     endedAt: null,
     section: { ...section1, gradeLevel: { id: 'g5', name: 'Grade 5', rank: 5 } },
@@ -60,7 +61,7 @@ describe('StudentsService', () => {
   };
   let mail: { sendCredentials: jest.Mock };
   let passwords: { resolve: jest.Mock };
-  let enrollments: { enroll: jest.Mock; endActive: jest.Mock; activeGradeLevelIdFor: jest.Mock };
+  let enrollments: { enroll: jest.Mock; replace: jest.Mock; end: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -73,7 +74,7 @@ describe('StudentsService', () => {
     };
     mail = { sendCredentials: jest.fn().mockResolvedValue(undefined) };
     passwords = { resolve: jest.fn().mockResolvedValue({ password: 'Teal-Fox-7412', passwordHash: 'hash' }) };
-    enrollments = { enroll: jest.fn(), endActive: jest.fn(), activeGradeLevelIdFor: jest.fn() };
+    enrollments = { enroll: jest.fn(), replace: jest.fn(), end: jest.fn() };
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
@@ -218,22 +219,38 @@ describe('StudentsService', () => {
   });
 
   describe('update', () => {
-    it('ends the previous enrollment when the section changes', async () => {
-      prisma.user.findUnique.mockResolvedValue({ ...baseUser, status: UserStatus.ACTIVE, enrollments: [enrollmentFixture()] });
+    it('replaces only the current class when the section changes, keeping the others', async () => {
+      const current = enrollmentFixture();
+      const other = enrollmentFixture({ id: 'enrollment-3', sectionId: 'section-9', isCurrent: false });
+      prisma.user.findUnique.mockResolvedValue({ ...baseUser, status: UserStatus.ACTIVE, enrollments: [current, other] });
       prisma.section.findUnique.mockResolvedValue(section2);
       prisma.user.update.mockResolvedValue({ ...baseUser, status: UserStatus.ACTIVE });
-      enrollments.enroll.mockResolvedValue(
+      enrollments.replace.mockResolvedValue(
         enrollmentFixture({ id: 'enrollment-2', sectionId: section2.id, section: { ...section2, gradeLevel: { id: 'g6', name: 'Grade 6', rank: 6 } } }),
       );
 
       const result = await service.update('student-1', { sectionId: section2.id });
 
-      expect(enrollments.endActive).toHaveBeenCalledWith(prisma, 'student-1');
-      expect(enrollments.enroll).toHaveBeenCalledWith(
+      expect(enrollments.replace).toHaveBeenCalledWith(
         prisma,
+        current,
         expect.objectContaining({ userId: 'student-1', sectionId: section2.id }),
       );
+      expect(enrollments.end).not.toHaveBeenCalled();
       expect(result.enrollment).toEqual(expect.objectContaining({ sectionId: section2.id }));
+      expect(result.enrollments.map((enrollment) => enrollment.id)).toEqual(['enrollment-2', 'enrollment-3']);
+    });
+
+    it('enrolls an unplaced student when a section is chosen', async () => {
+      prisma.user.findUnique.mockResolvedValue({ ...baseUser, status: UserStatus.ACTIVE, enrollments: [] });
+      prisma.section.findUnique.mockResolvedValue(section2);
+      prisma.user.update.mockResolvedValue({ ...baseUser, status: UserStatus.ACTIVE });
+      enrollments.enroll.mockResolvedValue(enrollmentFixture({ sectionId: section2.id }));
+
+      await service.update('student-1', { sectionId: section2.id });
+
+      expect(enrollments.enroll).toHaveBeenCalled();
+      expect(enrollments.replace).not.toHaveBeenCalled();
     });
 
     it('leaves enrollment history intact when a student is deactivated', async () => {
@@ -242,7 +259,7 @@ describe('StudentsService', () => {
 
       await service.update('student-1', { status: UserStatus.DISABLED });
 
-      expect(enrollments.endActive).not.toHaveBeenCalled();
+      expect(enrollments.replace).not.toHaveBeenCalled();
       expect(enrollments.enroll).not.toHaveBeenCalled();
     });
 

@@ -3,12 +3,16 @@ import { Prisma, Role, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { InvitesService } from '../invites/invites.service';
+import {
+  ActiveEnrollmentProfile,
+  EnrollmentLookupService,
+} from '../students/enrollment-lookup.service';
 import { EnrollmentsService } from '../students/enrollments.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.interface';
 import { actorScopeOf, requireReadable } from '../common/authorization/resource-access';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UserEntity } from './entities/user.entity';
-import { MeEntity } from './entities/me.entity';
+import { MeEnrollmentEntity, MeEntity } from './entities/me.entity';
 import { UsersAccessPolicy } from './users-access.policy';
 
 const USER_SELECT = {
@@ -41,6 +45,7 @@ export class UsersService {
     private readonly mailService: MailService,
     private readonly invitesService: InvitesService,
     private readonly usersAccessPolicy: UsersAccessPolicy,
+    private readonly enrollmentLookup: EnrollmentLookupService,
     private readonly enrollmentsService: EnrollmentsService,
   ) {}
 
@@ -63,35 +68,31 @@ export class UsersService {
     };
 
     if (!actor.schoolId) {
-      return { ...claims, school: null, enrollment: null };
+      return { ...claims, school: null, enrollment: null, enrollments: [] };
     }
 
-    const [school, enrollment] = await Promise.all([
+    const [school, profiles] = await Promise.all([
       this.prisma.school.findUnique({
         where: { id: actor.schoolId },
         select: ME_SCHOOL_SELECT,
       }),
       actor.role === Role.STUDENT
-        ? this.enrollmentsService.activeProfileFor(actor.sub)
-        : Promise.resolve(null),
+        ? this.enrollmentLookup.activeProfilesFor(actor.sub)
+        : Promise.resolve([]),
     ]);
 
-    return {
-      ...claims,
-      school,
-      enrollment: enrollment
-        ? {
-            id: enrollment.id,
-            sectionId: enrollment.sectionId,
-            sectionName: enrollment.section.name,
-            sectionLabel: `${enrollment.section.gradeLevel.name} - ${enrollment.section.name}`,
-            gradeLevelId: enrollment.section.gradeLevel.id,
-            gradeLevelName: enrollment.section.gradeLevel.name,
-            gradeLevelRank: enrollment.section.gradeLevel.rank,
-            rollNumber: enrollment.rollNumber,
-          }
-        : null,
-    };
+    // Ordered current-first, so the head is the class the student is switched into.
+    const enrollments = profiles.map(toMeEnrollment);
+    return { ...claims, school, enrollment: enrollments[0] ?? null, enrollments };
+  }
+
+  // Ownership is enforced inside switchCurrent: an enrollment that is not one of the
+  // caller's own ACTIVE rows is a 404, the same as a missing one.
+  async switchCurrentEnrollment(actor: AuthenticatedUser, enrollmentId: string): Promise<MeEntity> {
+    await this.prisma.$transaction(async (tx) => {
+      await this.enrollmentsService.switchCurrent(tx, actor.sub, enrollmentId);
+    });
+    return this.getProfile(actor);
   }
 
   // Tenant scoping is automatic — the guard extension scopes `count` alongside the
@@ -173,4 +174,18 @@ export class UsersService {
 
     return user;
   }
+}
+
+function toMeEnrollment(enrollment: ActiveEnrollmentProfile): MeEnrollmentEntity {
+  return {
+    id: enrollment.id,
+    sectionId: enrollment.sectionId,
+    sectionName: enrollment.section.name,
+    sectionLabel: `${enrollment.section.gradeLevel.name} - ${enrollment.section.name}`,
+    gradeLevelId: enrollment.section.gradeLevel.id,
+    gradeLevelName: enrollment.section.gradeLevel.name,
+    gradeLevelRank: enrollment.section.gradeLevel.rank,
+    rollNumber: enrollment.rollNumber,
+    isCurrent: enrollment.isCurrent,
+  };
 }

@@ -3,7 +3,7 @@ import { ContentAudience, Role } from '@prisma/client';
 import type { ActorScope } from '../common/authorization/resource-access';
 import { ContentEntitlementsService } from './content-entitlements.service';
 import { ActorContentScopeService } from './actor-content-scope.service';
-import { EnrollmentsService } from '../students/enrollments.service';
+import { EnrollmentLookupService } from '../students/enrollment-lookup.service';
 import { TeacherAssignmentsService } from '../teachers/teacher-assignments.service';
 
 const G5_MATHS = { curriculumId: 'c-g5-maths', gradeLevelId: 'g5', subjectId: 'maths', audience: ContentAudience.STUDENT };
@@ -17,20 +17,23 @@ function actor(role: Role, schoolId: string | null = 'school-a'): ActorScope {
 describe('ActorContentScopeService', () => {
   let service: ActorContentScopeService;
   let entitlements: { listEntitledCurricula: jest.Mock; isEntitled: jest.Mock };
-  let enrollments: { activeGradeLevelIdFor: jest.Mock };
+  let enrollments: { activeGradeLevelIdsFor: jest.Mock; currentGradeLevelIdFor: jest.Mock };
   let teacherAssignments: { taughtPairsFor: jest.Mock };
 
   beforeEach(async () => {
     entitlements = { listEntitledCurricula: jest.fn(), isEntitled: jest.fn() };
     // A TEACHER path never calls this — only asserted in the STUDENT-specific tests.
-    enrollments = { activeGradeLevelIdFor: jest.fn().mockResolvedValue(null) };
+    enrollments = {
+      activeGradeLevelIdsFor: jest.fn().mockResolvedValue([]),
+      currentGradeLevelIdFor: jest.fn().mockResolvedValue(null),
+    };
     teacherAssignments = { taughtPairsFor: jest.fn().mockResolvedValue([]) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ActorContentScopeService,
         { provide: ContentEntitlementsService, useValue: entitlements },
-        { provide: EnrollmentsService, useValue: enrollments },
+        { provide: EnrollmentLookupService, useValue: enrollments },
         { provide: TeacherAssignmentsService, useValue: teacherAssignments },
       ],
     }).compile();
@@ -68,7 +71,7 @@ describe('ActorContentScopeService', () => {
       G6_SCIENCE.curriculumId,
     ]);
     expect(teacherAssignments.taughtPairsFor).toHaveBeenCalledWith('u1');
-    expect(enrollments.activeGradeLevelIdFor).not.toHaveBeenCalled();
+    expect(enrollments.activeGradeLevelIdsFor).not.toHaveBeenCalled();
   });
 
   it('narrows student-audience curricula to the grade and subject pairs a teacher teaches', async () => {
@@ -99,23 +102,23 @@ describe('ActorContentScopeService', () => {
       G5_MATHS.curriculumId,
       G6_SCIENCE.curriculumId,
     ]);
-    expect(enrollments.activeGradeLevelIdFor).not.toHaveBeenCalled();
+    expect(enrollments.activeGradeLevelIdsFor).not.toHaveBeenCalled();
   });
 
   describe('STUDENT narrowing', () => {
     it("narrows to the student's enrolled grade level, intersected with the school's entitlements", async () => {
       entitlements.listEntitledCurricula.mockResolvedValue([G5_MATHS, G6_SCIENCE, TEACHER_MATHS]);
-      enrollments.activeGradeLevelIdFor.mockResolvedValue('g5');
+      enrollments.activeGradeLevelIdsFor.mockResolvedValue(['g5']);
 
       const scope = await service.resolve(actor(Role.STUDENT));
 
       expect(scope).toEqual([G5_MATHS.curriculumId]);
-      expect(enrollments.activeGradeLevelIdFor).toHaveBeenCalledWith('u1');
+      expect(enrollments.activeGradeLevelIdsFor).toHaveBeenCalledWith('u1');
     });
 
     it('never includes a teacher-audience curriculum even when its grade matches', async () => {
       entitlements.listEntitledCurricula.mockResolvedValue([G5_MATHS, TEACHER_MATHS]);
-      enrollments.activeGradeLevelIdFor.mockResolvedValue('g5');
+      enrollments.activeGradeLevelIdsFor.mockResolvedValue(['g5']);
 
       expect(await service.resolve(actor(Role.STUDENT))).toEqual([G5_MATHS.curriculumId]);
       expect(await service.includes(actor(Role.STUDENT), TEACHER_MATHS.curriculumId)).toBe(false);
@@ -124,16 +127,55 @@ describe('ActorContentScopeService', () => {
     // Failing open here would hand an unplaced student the whole school library.
     it('resolves a student with no active enrollment to an empty scope, not the school-wide set', async () => {
       entitlements.listEntitledCurricula.mockResolvedValue([G5_MATHS, G6_SCIENCE]);
-      enrollments.activeGradeLevelIdFor.mockResolvedValue(null);
+      enrollments.activeGradeLevelIdsFor.mockResolvedValue([]);
 
       expect(await service.resolve(actor(Role.STUDENT))).toEqual([]);
     });
 
     it('resolves an enrolled student to an empty scope when their grade level has no entitlement', async () => {
       entitlements.listEntitledCurricula.mockResolvedValue([G6_SCIENCE]);
-      enrollments.activeGradeLevelIdFor.mockResolvedValue('g5');
+      enrollments.activeGradeLevelIdsFor.mockResolvedValue(['g5']);
 
       expect(await service.resolve(actor(Role.STUDENT))).toEqual([]);
+    });
+
+    // A task or notification for one class must still open while another is selected.
+    it('authorizes every grade a multi-class student is enrolled in, whichever class is current', async () => {
+      entitlements.listEntitledCurricula.mockResolvedValue([G5_MATHS, G6_SCIENCE]);
+      enrollments.activeGradeLevelIdsFor.mockResolvedValue(['g5', 'g6']);
+      enrollments.currentGradeLevelIdFor.mockResolvedValue('g5');
+
+      expect(await service.resolve(actor(Role.STUDENT))).toEqual([
+        G5_MATHS.curriculumId,
+        G6_SCIENCE.curriculumId,
+      ]);
+      expect(await service.includes(actor(Role.STUDENT), G6_SCIENCE.curriculumId)).toBe(true);
+    });
+  });
+
+  describe('resolveBrowse', () => {
+    it("narrows a multi-class student's browse scope to the current class's grade", async () => {
+      entitlements.listEntitledCurricula.mockResolvedValue([G5_MATHS, G6_SCIENCE]);
+      enrollments.activeGradeLevelIdsFor.mockResolvedValue(['g5', 'g6']);
+      enrollments.currentGradeLevelIdFor.mockResolvedValue('g6');
+
+      expect(await service.resolveBrowse(actor(Role.STUDENT))).toEqual([G6_SCIENCE.curriculumId]);
+    });
+
+    it('resolves an unplaced student to an empty browse scope', async () => {
+      entitlements.listEntitledCurricula.mockResolvedValue([G5_MATHS, G6_SCIENCE]);
+
+      expect(await service.resolveBrowse(actor(Role.STUDENT))).toEqual([]);
+    });
+
+    it('matches resolve for every non-student role', async () => {
+      entitlements.listEntitledCurricula.mockResolvedValue([G5_MATHS, G6_SCIENCE]);
+
+      expect(await service.resolveBrowse(actor(Role.SCHOOL_ADMIN))).toEqual(
+        await service.resolve(actor(Role.SCHOOL_ADMIN)),
+      );
+      expect(await service.resolveBrowse(actor(Role.SUPER_ADMIN, null))).toBe('all');
+      expect(enrollments.currentGradeLevelIdFor).not.toHaveBeenCalled();
     });
   });
 
@@ -158,7 +200,7 @@ describe('ActorContentScopeService', () => {
     // path — the exact drift `includes`-derives-from-`resolve` exists to prevent.
     it("refuses a curriculum the school holds but the student's grade level excludes", async () => {
       entitlements.listEntitledCurricula.mockResolvedValue([G5_MATHS, G6_SCIENCE]);
-      enrollments.activeGradeLevelIdFor.mockResolvedValue('g5');
+      enrollments.activeGradeLevelIdsFor.mockResolvedValue(['g5']);
 
       expect(await service.includes(actor(Role.STUDENT), G6_SCIENCE.curriculumId)).toBe(false);
     });

@@ -78,7 +78,7 @@ describe('ContentTreeService', () => {
     document: { findMany: jest.Mock; groupBy: jest.Mock };
     $transaction: jest.Mock;
   };
-  let contentScope: { resolve: jest.Mock; includes: jest.Mock };
+  let contentScope: { resolveBrowse: jest.Mock; includes: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -91,7 +91,7 @@ describe('ContentTreeService', () => {
       document: { findMany: jest.fn().mockResolvedValue([]), groupBy: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
     };
-    contentScope = { resolve: jest.fn().mockResolvedValue(['curriculum-1']), includes: jest.fn() };
+    contentScope = { resolveBrowse: jest.fn().mockResolvedValue(['curriculum-1']), includes: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -194,7 +194,7 @@ describe('ContentTreeService', () => {
     });
 
     it('returns an empty list for a school entitled to nothing', async () => {
-      contentScope.resolve.mockResolvedValue([]);
+      contentScope.resolveBrowse.mockResolvedValue([]);
       prisma.curriculum.findMany.mockResolvedValue([]);
 
       await expect(service.findAllVisibleTo(TEACHER)).resolves.toEqual([]);
@@ -202,7 +202,7 @@ describe('ContentTreeService', () => {
 
     // 'all' is SUPER_ADMIN, who authors the library and is not narrowed by entitlement.
     it('applies no filter for the platform-wide scope', async () => {
-      contentScope.resolve.mockResolvedValue('all');
+      contentScope.resolveBrowse.mockResolvedValue('all');
 
       await service.findAllVisibleTo(TEACHER);
 

@@ -7,15 +7,22 @@ import { AuthenticatedUser } from '../auth/types/authenticated-user.interface';
 import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
 import { ListStudentsQueryDto } from './dto/list-students-query.dto';
-import { StudentEntity } from './entities/student.entity';
+import { StudentEnrollmentEntity, StudentEntity } from './entities/student.entity';
 import { PaginatedStudentsEntity } from './entities/paginated-students.entity';
-import { EnrollmentsService, EnrollmentWithSection } from './enrollments.service';
+import { AddStudentEnrollmentDto } from './dto/add-student-enrollment.dto';
+import { UpdateStudentEnrollmentDto } from './dto/update-student-enrollment.dto';
+import {
+  ENROLLMENT_WITH_SECTION_INCLUDE,
+  EnrollmentsService,
+  EnrollmentWithSection,
+} from './enrollments.service';
 
+// Current class first, so `enrollments[0]` is always the one the student is in.
 const STUDENT_ENROLLMENT_INCLUDE = {
   where: { status: EnrollmentStatus.ACTIVE },
-  take: 1,
-  include: { section: { include: { gradeLevel: true } } },
-} as const;
+  orderBy: [{ isCurrent: 'desc' }, { startedAt: 'asc' }],
+  include: ENROLLMENT_WITH_SECTION_INCLUDE,
+} satisfies Prisma.User$enrollmentsArgs;
 
 type StudentRow = Prisma.UserGetPayload<{ include: { enrollments: typeof STUDENT_ENROLLMENT_INCLUDE } }>;
 
@@ -24,15 +31,28 @@ type StudentRow = Prisma.UserGetPayload<{ include: { enrollments: typeof STUDENT
 function conflictTarget(error: unknown): string {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
     const target = error.meta?.target;
-    return Array.isArray(target) ? target.join(',') : '';
+    if (Array.isArray(target)) {
+      return target.join(',');
+    }
+    return typeof target === 'string' ? target : '';
   }
   return '';
 }
 
-function toEnrollmentEntity(enrollment: EnrollmentWithSection | undefined) {
-  if (!enrollment) {
-    return null;
+// Each enrollment write can trip either per-section partial index; the roll-number one is
+// checked first because its target also names sectionId.
+function toEnrollmentConflict(error: unknown): ConflictException | null {
+  const target = conflictTarget(error);
+  if (target.includes('rollNumber')) {
+    return new ConflictException('That roll number is already used in this section');
   }
+  if (target.includes('userId') && target.includes('sectionId')) {
+    return new ConflictException('The student is already enrolled in this section');
+  }
+  return null;
+}
+
+function toEnrollmentEntity(enrollment: EnrollmentWithSection): StudentEnrollmentEntity {
   return {
     id: enrollment.id,
     sectionId: enrollment.sectionId,
@@ -40,6 +60,7 @@ function toEnrollmentEntity(enrollment: EnrollmentWithSection | undefined) {
     gradeLevelId: enrollment.section.gradeLevelId,
     gradeLevelName: enrollment.section.gradeLevel.name,
     rollNumber: enrollment.rollNumber,
+    isCurrent: enrollment.isCurrent,
   };
 }
 
@@ -53,7 +74,8 @@ function toEntity(user: StudentRow): StudentEntity {
     status: user.status,
     activatedAt: user.activatedAt,
     createdAt: user.createdAt,
-    enrollment: toEnrollmentEntity(user.enrollments[0]),
+    enrollment: user.enrollments[0] ? toEnrollmentEntity(user.enrollments[0]) : null,
+    enrollments: user.enrollments.map(toEnrollmentEntity),
   };
 }
 
@@ -127,11 +149,11 @@ export class StudentsService {
         return { ...user, enrollments: [enrollment] };
       });
     } catch (error) {
-      const target = conflictTarget(error);
-      if (target.includes('rollNumber')) {
-        throw new ConflictException('That roll number is already used in this section');
+      const enrollmentConflict = toEnrollmentConflict(error);
+      if (enrollmentConflict) {
+        throw enrollmentConflict;
       }
-      if (target.includes('email')) {
+      if (conflictTarget(error).includes('email')) {
         throw new ConflictException('A user with this email already exists in this school');
       }
       throw error;
@@ -217,6 +239,8 @@ export class StudentsService {
     }
     const schoolId = existing.schoolId;
 
+    // Ordered current-first by STUDENT_ENROLLMENT_INCLUDE. PATCH acts on this one class
+    // only; the student's other classes are managed through the enrollment routes.
     const currentEnrollment = existing.enrollments[0];
     const changingSection = dto.sectionId !== undefined && dto.sectionId !== currentEnrollment?.sectionId;
 
@@ -253,32 +277,110 @@ export class StudentsService {
 
         let enrollment: EnrollmentWithSection | undefined = currentEnrollment;
         if (changingSection && dto.sectionId) {
-          await this.enrollments.endActive(tx, id);
-          enrollment = await this.enrollments.enroll(tx, {
+          const input = {
             schoolId,
             userId: id,
             sectionId: dto.sectionId,
             rollNumber: dto.rollNumber ?? currentEnrollment?.rollNumber,
-          });
+          };
+          enrollment = currentEnrollment
+            ? await this.enrollments.replace(tx, currentEnrollment, input)
+            : await this.enrollments.enroll(tx, input);
         } else if (dto.rollNumber !== undefined && currentEnrollment) {
           enrollment = await tx.enrollment.update({
             where: { id: currentEnrollment.id },
             data: { rollNumber: dto.rollNumber === '' ? null : dto.rollNumber },
-            include: { section: { include: { gradeLevel: true } } },
+            include: ENROLLMENT_WITH_SECTION_INCLUDE,
           });
         }
 
-        return { ...user, enrollments: enrollment ? [enrollment] : [] };
+        const others = existing.enrollments.slice(1);
+        return { ...user, enrollments: enrollment ? [enrollment, ...others] : others };
       });
     } catch (error) {
-      const target = conflictTarget(error);
-      if (target.includes('rollNumber')) {
-        throw new ConflictException('That roll number is already used in this section');
-      }
-      throw error;
+      throw toEnrollmentConflict(error) ?? error;
     }
 
     return toEntity(updated);
+  }
+
+  async addEnrollment(id: string, dto: AddStudentEnrollmentDto): Promise<StudentEntity> {
+    const student = await this.findStudentOrThrow(id);
+    // Tenant-scoped read: a cross-tenant section id 404s like a missing one.
+    const section = await this.prisma.section.findUnique({ where: { id: dto.sectionId } });
+    if (!section) {
+      throw new NotFoundException('Section not found');
+    }
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await this.enrollments.enroll(tx, {
+          schoolId: student.schoolId,
+          userId: id,
+          sectionId: dto.sectionId,
+          rollNumber: dto.rollNumber || null,
+        });
+      });
+    } catch (error) {
+      throw toEnrollmentConflict(error) ?? error;
+    }
+    return this.findStudentEntity(id);
+  }
+
+  async updateEnrollment(
+    id: string,
+    enrollmentId: string,
+    dto: UpdateStudentEnrollmentDto,
+  ): Promise<StudentEntity> {
+    await this.findStudentOrThrow(id);
+    // Scoped by userId so a mismatched (student, enrollment) pair is the same 404 as a
+    // missing one.
+    const enrollment = await this.prisma.enrollment.findFirst({
+      where: { id: enrollmentId, userId: id, status: EnrollmentStatus.ACTIVE },
+      select: { id: true },
+    });
+    if (!enrollment) {
+      throw new NotFoundException('Enrollment not found');
+    }
+    try {
+      await this.prisma.enrollment.update({
+        where: { id: enrollment.id },
+        data: { rollNumber: dto.rollNumber === '' ? null : dto.rollNumber },
+      });
+    } catch (error) {
+      throw toEnrollmentConflict(error) ?? error;
+    }
+    return this.findStudentEntity(id);
+  }
+
+  async removeEnrollment(id: string, enrollmentId: string): Promise<void> {
+    await this.findStudentOrThrow(id);
+    await this.prisma.$transaction(async (tx) => {
+      await this.enrollments.end(tx, id, enrollmentId);
+    });
+  }
+
+  // role !== STUDENT folds into the same 404 as "missing": these routes must never
+  // confirm the existence of a teacher or admin account.
+  private async findStudentOrThrow(id: string): Promise<{ id: string; schoolId: string }> {
+    const student = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, role: true, schoolId: true },
+    });
+    if (!student || student.role !== Role.STUDENT || !student.schoolId) {
+      throw new NotFoundException('Student not found');
+    }
+    return { id: student.id, schoolId: student.schoolId };
+  }
+
+  private async findStudentEntity(id: string): Promise<StudentEntity> {
+    const student = await this.prisma.user.findUnique({
+      where: { id },
+      include: { enrollments: STUDENT_ENROLLMENT_INCLUDE },
+    });
+    if (!student) {
+      throw new NotFoundException('Student not found');
+    }
+    return toEntity(student);
   }
 
   async getPassword(id: string): Promise<{ password: string | null }> {

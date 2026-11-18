@@ -9,4 +9,5 @@ export class DocumentEntity {
   @ApiProperty() curriculumId!: string;
   @ApiProperty() gradeLevelId!: string;
   @ApiProperty() subjectId!: string;
+  @ApiProperty({ nullable: true, type: Number }) pageCount!: number | null;
 }

@@ -23,6 +23,11 @@ import { WorkerAuthGuard } from './auth/guards/worker-auth.guard';
 import { PlaybackModule } from './playback/playback.module';
 import { PlaybackTokenGuard } from './playback/playback-token.guard';
 import { DocumentsModule } from './documents/documents.module';
+import { ContentBulkModule } from './content-bulk/content-bulk.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { TasksModule } from './tasks/tasks.module';
+import { ActivityModule } from './activity/activity.module';
+import { AcademicCalendarModule } from './academic-calendar/academic-calendar.module';
 
 @Module({
   imports: [
@@ -48,6 +53,11 @@ import { DocumentsModule } from './documents/documents.module';
     StudentsModule,
     VideosModule,
     DocumentsModule,
+    ContentBulkModule,
+    NotificationsModule,
+    TasksModule,
+    ActivityModule,
+    AcademicCalendarModule,
     PlaybackModule,
     HealthModule,
   ],

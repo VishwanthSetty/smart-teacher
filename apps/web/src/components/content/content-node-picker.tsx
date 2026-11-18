@@ -24,7 +24,11 @@ interface Props {
   required?: boolean;
   // Reports both ids: callers that warn about a video changing hands need the curriculum,
   // not just the node it landed on.
-  onChange?: (selection: { curriculumId: string; contentNodeId: string }) => void;
+  onChange?: (selection: {
+    curriculumId: string;
+    contentNodeId: string;
+    contentNodeTitle: string;
+  }) => void;
 }
 
 interface FlatNode {
@@ -97,7 +101,11 @@ export function ContentNodePicker({
 
   function selectNode(value: string, forCurriculumId = curriculumId) {
     setNodeId(value);
-    onChange?.({ curriculumId: forCurriculumId, contentNodeId: value });
+    onChange?.({
+      curriculumId: forCurriculumId,
+      contentNodeId: value,
+      contentNodeTitle: nodes.find((node) => node.id === value)?.label.trim() ?? '',
+    });
   }
 
   const hasPlaceToFile = nodes.some((node) => node.canHoldContent);

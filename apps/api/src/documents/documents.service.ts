@@ -29,6 +29,7 @@ const DOCUMENT_SELECT = {
   id: true,
   title: true,
   description: true,
+  pageCount: true,
   contentNodeId: true,
   node: {
     select: {
@@ -61,6 +62,7 @@ function toDocumentEntity(row: DocumentRow): DocumentEntity {
     curriculumId: row.node.curriculumId,
     gradeLevelId: row.node.curriculum.gradeLevelId,
     subjectId: row.node.curriculum.subjectId,
+    pageCount: row.pageCount,
   };
 }
 
@@ -97,7 +99,7 @@ export class DocumentsService {
   }
 
   async findAllVisibleTo(actor: AuthenticatedUser): Promise<DocumentEntity[]> {
-    const scope = await this.contentScope.resolve(actorScopeOf(actor));
+    const scope = await this.contentScope.resolveBrowse(actorScopeOf(actor));
     const rows = await this.prisma.document.findMany({
       where: {
         status: DocumentStatus.READY,

@@ -193,7 +193,7 @@ export class VideosService {
   // second filter here would hide draft content from the 'all' branch — which is exactly
   // the preview a SUPER_ADMIN needs before publishing. One seam, one answer.
   async findAllVisibleTo(actor: AuthenticatedUser): Promise<VideoEntity[]> {
-    const scope = await this.contentScope.resolve(actorScopeOf(actor));
+    const scope = await this.contentScope.resolveBrowse(actorScopeOf(actor));
 
     if (scope === 'all') {
       const rows = await this.prisma.video.findMany({

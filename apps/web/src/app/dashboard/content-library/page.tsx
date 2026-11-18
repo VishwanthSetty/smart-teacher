@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ArrowLeft, BookOpen, FileText, GraduationCap, Video } from 'lucide-react';
+import { ArrowLeft, BookOpen, FileText, GraduationCap, Upload, Video } from 'lucide-react';
 import { VideoStatus } from '@smart-teacher/shared-types';
 import { apiListActiveSubjects, apiListAdminDocuments, apiListAdminGradeLevels, apiListAdminVideos, apiListCurricula } from '@/lib/api-client';
 import { canRoleAccess } from '@/lib/nav';
 import { getAccessToken, requireUser } from '@/lib/session';
+import { ButtonLink } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { VideoIngestPanel } from './_components/video-ingest-panel';
@@ -71,7 +72,11 @@ export default async function ContentLibraryPage({ searchParams }: { searchParam
   const scanTruncated = !subjectId && result.meta.total > result.data.length;
 
   return <div className="flex flex-col gap-6">
-    <PageHeader title="Content Library" description="Find, inspect, and manage platform videos and PDF documents." />
+    <PageHeader
+      title="Content Library"
+      description="Find, inspect, and manage platform videos and PDF documents."
+      action={<ButtonLink href={`${ROUTE}/bulk`} variant="secondary"><Upload className="h-4 w-4" aria-hidden="true" />Bulk upload</ButtonLink>}
+    />
     <nav className="inline-flex w-fit rounded-full border border-surface-border bg-white p-1 text-sm shadow-card" aria-label="Content type">
       <Link href={`${ROUTE}?kind=videos`} className={`rounded-full px-4 py-2 font-medium ${kind === 'videos' ? 'bg-brand-navy text-white' : 'text-ink-muted hover:bg-brand-tint'}`}>Videos</Link>
       <Link href={`${ROUTE}?kind=documents`} className={`rounded-full px-4 py-2 font-medium ${kind === 'documents' ? 'bg-brand-navy text-white' : 'text-ink-muted hover:bg-brand-tint'}`}>Documents</Link>

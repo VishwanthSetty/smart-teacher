@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { StudentsModule } from '../students/students.module';
+import { EnrollmentLookupModule } from '../students/enrollment-lookup.module';
 import { TeachersModule } from '../teachers/teachers.module';
 import { ContentEntitlementsService } from './content-entitlements.service';
 import { ActorContentScopeService } from './actor-content-scope.service';
@@ -10,7 +10,7 @@ import { ContentImpactController } from './content-impact.controller';
 import { ContentImpactService } from './content-impact.service';
 
 @Module({
-  imports: [StudentsModule, TeachersModule],
+  imports: [EnrollmentLookupModule, TeachersModule],
   controllers: [EntitlementsAdminController, EntitlementsOverviewAdminController, ContentImpactController],
   providers: [
     ContentEntitlementsService,

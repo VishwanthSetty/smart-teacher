@@ -22,14 +22,15 @@ export class UpdateStudentDto {
   @ApiProperty({
     example: '12',
     required: false,
-    description: 'Unique within the enrolled section. Send an empty string to clear it.',
+    description: 'Applies to the current class. Unique within that section. Send an empty string to clear it.',
   })
   @IsOptional()
   @IsString()
   @MaxLength(20)
   rollNumber?: string;
 
-  @ApiProperty({ required: false, description: 'Re-enrolls the student into a different section' })
+  @ApiProperty({ required: false, description:
+      'Moves the current class to a different section. Other classes are untouched — use /students/:id/enrollments to add or remove classes.' })
   @IsOptional()
   @IsString()
   sectionId?: string;

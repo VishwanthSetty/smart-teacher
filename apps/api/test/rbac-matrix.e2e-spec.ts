@@ -107,6 +107,11 @@ const MATRIX: MatrixRow[] = [
   },
   { key: 'GET /users/me', request: { method: 'get', path: '/users/me' }, access: { allow: ALL_ROLES } },
   {
+    key: 'PUT /users/me/current-enrollment',
+    request: { method: 'put', path: '/users/me/current-enrollment', body: {} },
+    access: { allow: [Role.STUDENT] },
+  },
+  {
     key: 'GET /users/:id',
     request: { method: 'get', path: `/users/${MISSING_ID}` },
     access: { allow: ALL_ROLES },
@@ -438,6 +443,21 @@ const MATRIX: MatrixRow[] = [
     access: { allow: [Role.SCHOOL_ADMIN] },
   },
   {
+    key: 'POST /students/:id/enrollments',
+    request: { method: 'post', path: `/students/${MISSING_ID}/enrollments`, body: {} },
+    access: { allow: [Role.SCHOOL_ADMIN] },
+  },
+  {
+    key: 'PATCH /students/:id/enrollments/:enrollmentId',
+    request: { method: 'patch', path: `/students/${MISSING_ID}/enrollments/${MISSING_ID}`, body: {} },
+    access: { allow: [Role.SCHOOL_ADMIN] },
+  },
+  {
+    key: 'DELETE /students/:id/enrollments/:enrollmentId',
+    request: { method: 'delete', path: `/students/${MISSING_ID}/enrollments/${MISSING_ID}` },
+    access: { allow: [Role.SCHOOL_ADMIN] },
+  },
+  {
     key: 'GET /sections',
     request: { method: 'get', path: '/sections' },
     access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER] },
@@ -513,6 +533,8 @@ const MATRIX: MatrixRow[] = [
     access: { allow: [Role.SUPER_ADMIN] },
   },
 
+  { key: 'POST /admin/content/bulk', request: { method: 'post', path: '/admin/content/bulk', body: {} }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'POST /admin/content/bulk/confirm', request: { method: 'post', path: '/admin/content/bulk/confirm', body: {} }, access: { allow: [Role.SUPER_ADMIN] } },
   { key: 'GET /admin/documents', request: { method: 'get', path: '/admin/documents' }, access: { allow: [Role.SUPER_ADMIN] } },
   { key: 'GET /admin/documents/:id', request: { method: 'get', path: `/admin/documents/${MISSING_ID}` }, access: { allow: [Role.SUPER_ADMIN] } },
   { key: 'GET /admin/documents/:id/download', request: { method: 'get', path: `/admin/documents/${MISSING_ID}/download` }, access: { allow: [Role.SUPER_ADMIN] } },
@@ -584,6 +606,84 @@ const MATRIX: MatrixRow[] = [
   { key: 'GET /videos/:id/hls/:rendition/playlist.m3u8', request: { method: 'get', path: `/videos/${MISSING_ID}/hls/360p/playlist.m3u8` }, access: 'playback-token' },
   { key: 'GET /videos/:id/hls/:rendition/:segment', request: { method: 'get', path: `/videos/${MISSING_ID}/hls/360p/segment_000.ts` }, access: 'playback-token' },
   { key: 'GET /videos/:id/poster.jpg', request: { method: 'get', path: `/videos/${MISSING_ID}/poster.jpg` }, access: 'playback-token' },
+
+  // Tenant-owned learning activity. SUPER_ADMIN has no tenant and is deliberately absent.
+  { key: 'PUT /me/progress/videos/:id', request: { method: 'put', path: `/me/progress/videos/${MISSING_ID}`, body: {} }, access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] } },
+  { key: 'PUT /me/progress/documents/:id', request: { method: 'put', path: `/me/progress/documents/${MISSING_ID}`, body: {} }, access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] } },
+  { key: 'POST /me/progress/documents/:id/complete', request: { method: 'post', path: `/me/progress/documents/${MISSING_ID}/complete`, body: {} }, access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] } },
+  { key: 'DELETE /me/progress/documents/:id/complete', request: { method: 'delete', path: `/me/progress/documents/${MISSING_ID}/complete` }, access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] } },
+  { key: 'GET /me/progress/summary', request: { method: 'get', path: '/me/progress/summary' }, access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] } },
+  { key: 'GET /me/activity', request: { method: 'get', path: '/me/activity' }, access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] } },
+  { key: 'GET /me/continue', request: { method: 'get', path: '/me/continue' }, access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] } },
+  { key: 'GET /me/bookmarks', request: { method: 'get', path: '/me/bookmarks' }, access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] } },
+  { key: 'POST /me/bookmarks', request: { method: 'post', path: '/me/bookmarks', body: {} }, access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] } },
+  { key: 'DELETE /me/bookmarks/:id', request: { method: 'delete', path: `/me/bookmarks/${MISSING_ID}` }, access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] } },
+  { key: 'GET /me/collections', request: { method: 'get', path: '/me/collections' }, access: { allow: [Role.TEACHER] } },
+  { key: 'POST /me/collections', request: { method: 'post', path: '/me/collections', body: {} }, access: { allow: [Role.TEACHER] } },
+  { key: 'PATCH /me/collections/:id', request: { method: 'patch', path: `/me/collections/${MISSING_ID}`, body: {} }, access: { allow: [Role.TEACHER] } },
+  { key: 'DELETE /me/collections/:id', request: { method: 'delete', path: `/me/collections/${MISSING_ID}` }, access: { allow: [Role.TEACHER] } },
+  { key: 'POST /me/collections/:id/items', request: { method: 'post', path: `/me/collections/${MISSING_ID}/items`, body: {} }, access: { allow: [Role.TEACHER] } },
+  { key: 'DELETE /me/collections/:id/items', request: { method: 'delete', path: `/me/collections/${MISSING_ID}/items`, body: {} }, access: { allow: [Role.TEACHER] } },
+  { key: 'GET /library/search', request: { method: 'get', path: '/library/search' }, access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] } },
+  { key: 'GET /home/student', request: { method: 'get', path: '/home/student' }, access: { allow: [Role.STUDENT] } },
+  { key: 'GET /home/teacher', request: { method: 'get', path: '/home/teacher' }, access: { allow: [Role.TEACHER] } },
+
+  // Teacher assignment and reports, plus the student's own task surface.
+  { key: 'POST /tasks', request: { method: 'post', path: '/tasks', body: {} }, access: { allow: [Role.TEACHER] } },
+  { key: 'GET /tasks', request: { method: 'get', path: '/tasks' }, access: { allow: [Role.TEACHER] } },
+  { key: 'GET /tasks/:id', request: { method: 'get', path: `/tasks/${MISSING_ID}` }, access: { allow: [Role.TEACHER] } },
+  { key: 'PATCH /tasks/:id', request: { method: 'patch', path: `/tasks/${MISSING_ID}`, body: {} }, access: { allow: [Role.TEACHER] } },
+  { key: 'POST /tasks/:id/cancel', request: { method: 'post', path: `/tasks/${MISSING_ID}/cancel`, body: {} }, access: { allow: [Role.TEACHER] } },
+  { key: 'GET /tasks/:id/progress', request: { method: 'get', path: `/tasks/${MISSING_ID}/progress` }, access: { allow: [Role.TEACHER] } },
+  { key: 'GET /tasks/:id/students/:studentId', request: { method: 'get', path: `/tasks/${MISSING_ID}/students/${MISSING_ID}` }, access: { allow: [Role.TEACHER] } },
+  { key: 'POST /tasks/:id/remind', request: { method: 'post', path: `/tasks/${MISSING_ID}/remind`, body: {} }, access: { allow: [Role.TEACHER] } },
+  { key: 'GET /teacher/class-progress', request: { method: 'get', path: '/teacher/class-progress' }, access: { allow: [Role.TEACHER] } },
+  { key: 'GET /me/tasks', request: { method: 'get', path: '/me/tasks' }, access: { allow: [Role.STUDENT] } },
+  { key: 'GET /me/tasks/:id', request: { method: 'get', path: `/me/tasks/${MISSING_ID}` }, access: { allow: [Role.STUDENT] } },
+
+  // In-app notifications and push registrations are deliberately limited to end users.
+  { key: 'GET /me/notifications', request: { method: 'get', path: '/me/notifications' }, access: { allow: [Role.TEACHER, Role.STUDENT] } },
+  { key: 'POST /me/notifications/read-all', request: { method: 'post', path: '/me/notifications/read-all', body: {} }, access: { allow: [Role.TEACHER, Role.STUDENT] } },
+  { key: 'POST /me/notifications/:id/read', request: { method: 'post', path: `/me/notifications/${MISSING_ID}/read`, body: {} }, access: { allow: [Role.TEACHER, Role.STUDENT] } },
+  { key: 'GET /me/notification-preferences', request: { method: 'get', path: '/me/notification-preferences' }, access: { allow: [Role.TEACHER, Role.STUDENT] } },
+  { key: 'PATCH /me/notification-preferences', request: { method: 'patch', path: '/me/notification-preferences', body: {} }, access: { allow: [Role.TEACHER, Role.STUDENT] } },
+  { key: 'POST /me/devices', request: { method: 'post', path: '/me/devices', body: {} }, access: { allow: [Role.TEACHER, Role.STUDENT] } },
+  { key: 'DELETE /me/devices/:id', request: { method: 'delete', path: `/me/devices/${MISSING_ID}` }, access: { allow: [Role.TEACHER, Role.STUDENT] } },
+
+  // Academic calendar. Years and default calendars are platform authoring (SUPER_ADMIN);
+  // a school's own calendars and its per-year opt-in are SCHOOL_ADMIN; the resolved view
+  // is for every school role. SUPER_ADMIN has no school, so it has no effective calendar.
+  { key: 'GET /academic-years', request: { method: 'get', path: '/academic-years' }, access: { allow: ALL_ROLES } },
+  { key: 'POST /admin/academic-years', request: { method: 'post', path: '/admin/academic-years', body: {} }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'PATCH /admin/academic-years/:id', request: { method: 'patch', path: `/admin/academic-years/${MISSING_ID}`, body: {} }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'DELETE /admin/academic-years/:id', request: { method: 'delete', path: `/admin/academic-years/${MISSING_ID}` }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'GET /admin/academic-calendars', request: { method: 'get', path: '/admin/academic-calendars' }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'POST /admin/academic-calendars', request: { method: 'post', path: '/admin/academic-calendars', body: {} }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'GET /admin/academic-calendars/:id', request: { method: 'get', path: `/admin/academic-calendars/${MISSING_ID}` }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'POST /admin/academic-calendars/:id/publish', request: { method: 'post', path: `/admin/academic-calendars/${MISSING_ID}/publish` }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'POST /admin/academic-calendars/:id/unpublish', request: { method: 'post', path: `/admin/academic-calendars/${MISSING_ID}/unpublish` }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'DELETE /admin/academic-calendars/:id', request: { method: 'delete', path: `/admin/academic-calendars/${MISSING_ID}` }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'POST /admin/academic-calendars/:id/entries', request: { method: 'post', path: `/admin/academic-calendars/${MISSING_ID}/entries`, body: {} }, access: { allow: [Role.SUPER_ADMIN] } },
+  // No file attached is a 400 after authorization passes, which is all this table asserts.
+  { key: 'GET /admin/academic-calendars/:id/entries/import-template', request: { method: 'get', path: `/admin/academic-calendars/${MISSING_ID}/entries/import-template` }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'POST /admin/academic-calendars/:id/entries/import', request: { method: 'post', path: `/admin/academic-calendars/${MISSING_ID}/entries/import`, body: {} }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'PATCH /admin/academic-calendars/:id/entries/:entryId', request: { method: 'patch', path: `/admin/academic-calendars/${MISSING_ID}/entries/${MISSING_ID}`, body: {} }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'DELETE /admin/academic-calendars/:id/entries/:entryId', request: { method: 'delete', path: `/admin/academic-calendars/${MISSING_ID}/entries/${MISSING_ID}` }, access: { allow: [Role.SUPER_ADMIN] } },
+  { key: 'GET /school-academic-calendars', request: { method: 'get', path: '/school-academic-calendars' }, access: { allow: [Role.SCHOOL_ADMIN] } },
+  { key: 'POST /school-academic-calendars', request: { method: 'post', path: '/school-academic-calendars', body: {} }, access: { allow: [Role.SCHOOL_ADMIN] } },
+  { key: 'GET /school-academic-calendars/:id', request: { method: 'get', path: `/school-academic-calendars/${MISSING_ID}` }, access: { allow: [Role.SCHOOL_ADMIN] } },
+  { key: 'POST /school-academic-calendars/:id/publish', request: { method: 'post', path: `/school-academic-calendars/${MISSING_ID}/publish` }, access: { allow: [Role.SCHOOL_ADMIN] } },
+  { key: 'POST /school-academic-calendars/:id/unpublish', request: { method: 'post', path: `/school-academic-calendars/${MISSING_ID}/unpublish` }, access: { allow: [Role.SCHOOL_ADMIN] } },
+  { key: 'DELETE /school-academic-calendars/:id', request: { method: 'delete', path: `/school-academic-calendars/${MISSING_ID}` }, access: { allow: [Role.SCHOOL_ADMIN] } },
+  { key: 'POST /school-academic-calendars/:id/entries', request: { method: 'post', path: `/school-academic-calendars/${MISSING_ID}/entries`, body: {} }, access: { allow: [Role.SCHOOL_ADMIN] } },
+  { key: 'GET /school-academic-calendars/:id/entries/import-template', request: { method: 'get', path: `/school-academic-calendars/${MISSING_ID}/entries/import-template` }, access: { allow: [Role.SCHOOL_ADMIN] } },
+  { key: 'POST /school-academic-calendars/:id/entries/import', request: { method: 'post', path: `/school-academic-calendars/${MISSING_ID}/entries/import`, body: {} }, access: { allow: [Role.SCHOOL_ADMIN] } },
+  { key: 'PATCH /school-academic-calendars/:id/entries/:entryId', request: { method: 'patch', path: `/school-academic-calendars/${MISSING_ID}/entries/${MISSING_ID}`, body: {} }, access: { allow: [Role.SCHOOL_ADMIN] } },
+  { key: 'DELETE /school-academic-calendars/:id/entries/:entryId', request: { method: 'delete', path: `/school-academic-calendars/${MISSING_ID}/entries/${MISSING_ID}` }, access: { allow: [Role.SCHOOL_ADMIN] } },
+  { key: 'GET /academic-calendar-settings', request: { method: 'get', path: '/academic-calendar-settings' }, access: { allow: [Role.SCHOOL_ADMIN] } },
+  { key: 'PUT /academic-calendar-settings/:academicYearId', request: { method: 'put', path: `/academic-calendar-settings/${MISSING_ID}`, body: {} }, access: { allow: [Role.SCHOOL_ADMIN] } },
+  { key: 'GET /academic-calendar', request: { method: 'get', path: '/academic-calendar' }, access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] } },
+  { key: 'GET /academic-calendar/subjects', request: { method: 'get', path: '/academic-calendar/subjects' }, access: { allow: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT] } },
 ];
 
 // Tenant admins may consume licensed content, but platform authoring and cross-tenant
@@ -591,8 +691,11 @@ const MATRIX: MatrixRow[] = [
 const CONTENT_AUTHORING_AND_ENTITLEMENT_PATHS = [
   '/admin/videos',
   '/admin/documents',
+  '/admin/content/bulk',
   '/admin/grade-levels',
   '/admin/subjects',
+  '/admin/academic-years',
+  '/admin/academic-calendars',
   '/entitlements',
 ];
 

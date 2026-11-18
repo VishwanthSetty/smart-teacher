@@ -1,5 +1,16 @@
 import { plainToInstance, Transform } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsString, Max, Min, MinLength, validateSync } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsString,
+  Matches,
+  Max,
+  Min,
+  MinLength,
+  ValidateIf,
+  validateSync,
+} from 'class-validator';
 
 class EnvironmentVariables {
   // Node's own build-mode flag (framework perf switches, `npm prune --omit=dev`, etc).
@@ -177,6 +188,32 @@ class EnvironmentVariables {
   @Min(5)
   @Max(720)
   TRANSCODE_STALE_AFTER_MINS!: number;
+
+  @IsInt()
+  @Min(50)
+  @Max(100)
+  VIDEO_COMPLETION_PERCENT: number = 85;
+
+  @IsInt()
+  @Min(0)
+  @Max(120)
+  PROGRESS_CLOCK_SLACK_SECS: number = 10;
+
+  @IsInt()
+  @Min(1)
+  @Max(4)
+  MAX_PLAYBACK_RATE: number = 2;
+
+  @IsIn(['none', 'fcm'])
+  PUSH_PROVIDER: 'none' | 'fcm' = 'none';
+
+  @ValidateIf((environment: EnvironmentVariables) => environment.PUSH_PROVIDER === 'fcm')
+  @IsString()
+  FCM_SERVICE_ACCOUNT_JSON?: string;
+
+  @IsString()
+  @Matches(/^(\S+\s+){4}\S+$/)
+  TEACHER_DAILY_SUMMARY_CRON: string = '0 7 * * *';
 }
 
 export function validateEnv(config: Record<string, unknown>) {

@@ -2,6 +2,7 @@ import {
   BookOpen,
   Building2,
   CalendarDays,
+  CalendarRange,
   GraduationCap,
   LayoutDashboard,
   Layers,
@@ -88,6 +89,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     href: '/dashboard/timetable',
     icon: CalendarDays,
     roles: [Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT],
+  },
+  {
+    label: 'Academic Calendar',
+    href: '/dashboard/academic-calendar',
+    icon: CalendarRange,
+    roles: [Role.SUPER_ADMIN, Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT],
   },
   {
     label: 'My Subjects',

@@ -7,6 +7,7 @@ import { InvitesService } from '../invites/invites.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.interface';
 import { UsersService } from './users.service';
 import { UsersAccessPolicy } from './users-access.policy';
+import { EnrollmentLookupService } from '../students/enrollment-lookup.service';
 import { EnrollmentsService } from '../students/enrollments.service';
 
 const actor: AuthenticatedUser = {
@@ -28,7 +29,8 @@ describe('UsersService', () => {
   };
   let mail: { sendUserInvite: jest.Mock };
   let invites: { mintToken: jest.Mock };
-  let enrollments: { activeProfileFor: jest.Mock };
+  let enrollments: { activeProfilesFor: jest.Mock };
+  let enrollmentWrites: { switchCurrent: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -44,7 +46,8 @@ describe('UsersService', () => {
         expiresAt: new Date('2026-08-01T00:00:00.000Z'),
       }),
     };
-    enrollments = { activeProfileFor: jest.fn().mockResolvedValue(null) };
+    enrollments = { activeProfilesFor: jest.fn().mockResolvedValue([]) };
+    enrollmentWrites = { switchCurrent: jest.fn() };
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
@@ -53,7 +56,8 @@ describe('UsersService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: MailService, useValue: mail },
         { provide: InvitesService, useValue: invites },
-        { provide: EnrollmentsService, useValue: enrollments },
+        { provide: EnrollmentLookupService, useValue: enrollments },
+        { provide: EnrollmentsService, useValue: enrollmentWrites },
       ],
     }).compile();
 
@@ -170,7 +174,7 @@ describe('UsersService', () => {
         school: { name: 'Springfield High' },
         enrollment: null,
       });
-      expect(enrollments.activeProfileFor).not.toHaveBeenCalled();
+      expect(enrollments.activeProfilesFor).not.toHaveBeenCalled();
     });
 
     it('adds active enrollment context for a student actor', async () => {
@@ -180,19 +184,32 @@ describe('UsersService', () => {
         slug: 'springfield-high',
         status: 'ACTIVE',
       });
-      enrollments.activeProfileFor.mockResolvedValue({
-        id: 'enrollment-1',
-        sectionId: 'section-1',
-        rollNumber: '12',
-        section: {
-          name: 'A',
-          gradeLevel: { id: 'grade-5', name: 'Grade 5', rank: 5 },
+      enrollments.activeProfilesFor.mockResolvedValue([
+        {
+          id: 'enrollment-1',
+          sectionId: 'section-1',
+          rollNumber: '12',
+          isCurrent: true,
+          section: {
+            name: 'A',
+            gradeLevel: { id: 'grade-5', name: 'Grade 5', rank: 5 },
+          },
         },
-      });
+        {
+          id: 'enrollment-2',
+          sectionId: 'section-2',
+          rollNumber: null,
+          isCurrent: false,
+          section: {
+            name: 'Maths',
+            gradeLevel: { id: 'grade-6', name: 'Grade 6', rank: 6 },
+          },
+        },
+      ]);
 
       const profile = await service.getProfile({ ...actor, role: Role.STUDENT });
 
-      expect(enrollments.activeProfileFor).toHaveBeenCalledWith('admin-1');
+      expect(enrollments.activeProfilesFor).toHaveBeenCalledWith('admin-1');
       expect(profile.enrollment).toEqual({
         id: 'enrollment-1',
         sectionId: 'section-1',
@@ -202,7 +219,20 @@ describe('UsersService', () => {
         gradeLevelName: 'Grade 5',
         gradeLevelRank: 5,
         rollNumber: '12',
+        isCurrent: true,
       });
+      expect(profile.enrollments.map((enrollment) => enrollment.sectionLabel)).toEqual([
+        'Grade 5 - A',
+        'Grade 6 - Maths',
+      ]);
+    });
+
+    it('lists no classes for a non-student actor', async () => {
+      prisma.school.findUnique.mockResolvedValue(null);
+
+      const profile = await service.getProfile(actor);
+
+      expect(profile.enrollments).toEqual([]);
     });
 
     it('skips the lookup entirely for a platform actor with no school', async () => {
@@ -212,7 +242,7 @@ describe('UsersService', () => {
       expect(profile.school).toBeNull();
       expect(profile.schoolId).toBeNull();
       expect(profile.enrollment).toBeNull();
-      expect(enrollments.activeProfileFor).not.toHaveBeenCalled();
+      expect(enrollments.activeProfilesFor).not.toHaveBeenCalled();
     });
   });
 

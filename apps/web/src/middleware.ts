@@ -82,5 +82,7 @@ export const config = {
   // The player re-mints a playback token mid-video from /api/videos/:id/playback-token. Without
   // this second entry that call reads a stale access-token cookie once the ~15m access token
   // expires, the API 401s, and a long video dies with no way back short of a page reload.
-  matcher: ['/dashboard/:path*', '/api/videos/:path*'],
+  // A bulk upload has the same problem: it can outlast the access token with no page navigation,
+  // so its BFF calls need the refresh too, or every file after the first 15 minutes would fail.
+  matcher: ['/dashboard/:path*', '/api/videos/:path*', '/api/documents/:path*', '/api/content/:path*'],
 };

@@ -50,6 +50,23 @@ import type {
   AdminDocumentDetail,
   DocumentDownload,
   DocumentUploadTicket,
+  AcademicYear,
+  AcademicYearInput,
+  AcademicCalendarDetail,
+  AcademicCalendarEntry,
+  AcademicCalendarSetting,
+  AcademicCalendarStatus,
+  AcademicCalendarSummary,
+  AcademicCalendarView,
+  CalendarEntryInput,
+  CalendarImportResult,
+  CalendarPair,
+  SchoolCalendarOverview,
+  ViewAcademicCalendarQuery,
+  BulkContentConfirmResult,
+  BulkContentCreateResult,
+  ConfirmBulkContentInput,
+  CreateBulkContentInput,
 } from '@smart-teacher/shared-types';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:4000';
@@ -962,6 +979,59 @@ export async function apiUpdateStudent(
   return handleResponse<Student>(response);
 }
 
+export interface AddStudentEnrollmentInput {
+  sectionId: string;
+  rollNumber?: string;
+}
+
+// Adds a class alongside the student's existing ones; it never moves them out of their
+// current class. 409 if they are already in that section or the roll number is taken.
+export async function apiAddStudentEnrollment(
+  accessToken: string,
+  studentId: string,
+  input: AddStudentEnrollmentInput,
+): Promise<Student> {
+  const response = await fetch(`${API_URL}/students/${studentId}/enrollments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
+    cache: 'no-store',
+  });
+  return handleResponse<Student>(response);
+}
+
+export async function apiUpdateStudentEnrollment(
+  accessToken: string,
+  studentId: string,
+  enrollmentId: string,
+  input: { rollNumber: string },
+): Promise<Student> {
+  const response = await fetch(`${API_URL}/students/${studentId}/enrollments/${enrollmentId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
+    cache: 'no-store',
+  });
+  return handleResponse<Student>(response);
+}
+
+// 204 No Content on success, so this can't go through handleResponse.
+export async function apiRemoveStudentEnrollment(
+  accessToken: string,
+  studentId: string,
+  enrollmentId: string,
+): Promise<void> {
+  const response = await fetch(`${API_URL}/students/${studentId}/enrollments/${enrollmentId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ message: response.statusText }));
+    throw new ApiError(response.status, body.message ?? 'Request failed');
+  }
+}
+
 export async function apiGetTeacherPassword(accessToken: string, id: string): Promise<{ password: string | null }> {
   const response = await fetch(`${API_URL}/teachers/${id}/password`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -1395,6 +1465,32 @@ export async function apiCreateDocument(
   return handleResponse<DocumentUploadTicket>(response);
 }
 
+export async function apiCreateBulkContent(
+  accessToken: string,
+  input: CreateBulkContentInput,
+): Promise<BulkContentCreateResult> {
+  const response = await fetch(`${API_URL}/admin/content/bulk`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
+    cache: 'no-store',
+  });
+  return handleResponse<BulkContentCreateResult>(response);
+}
+
+export async function apiConfirmBulkContent(
+  accessToken: string,
+  input: ConfirmBulkContentInput,
+): Promise<BulkContentConfirmResult> {
+  const response = await fetch(`${API_URL}/admin/content/bulk/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
+    cache: 'no-store',
+  });
+  return handleResponse<BulkContentConfirmResult>(response);
+}
+
 export async function apiCreateDocumentUploadUrl(
   accessToken: string,
   id: string,
@@ -1444,4 +1540,242 @@ export async function apiGetCurriculumTree(accessToken: string, id: string): Pro
     cache: 'no-store',
   });
   return handleResponse<ContentTree>(response);
+}
+
+// ---------------------------------------------------------------------------
+// Academic calendar
+// ---------------------------------------------------------------------------
+
+// A platform default (SUPER_ADMIN) and a school's own calendar (SCHOOL_ADMIN) share one
+// API shape under different roots, so the editor is written once against either.
+export type CalendarKind = 'platform' | 'school';
+
+const CALENDAR_ROOT: Record<CalendarKind, string> = {
+  platform: '/admin/academic-calendars',
+  school: '/school-academic-calendars',
+};
+
+async function handleNoContent(response: Response): Promise<void> {
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ message: response.statusText }));
+    throw new ApiError(response.status, body.message ?? 'Request failed');
+  }
+}
+
+function authed(accessToken: string, method = 'GET', body?: unknown): RequestInit {
+  return {
+    method,
+    headers:
+      body === undefined
+        ? { Authorization: `Bearer ${accessToken}` }
+        : { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    cache: 'no-store',
+  };
+}
+
+export async function apiListAcademicYears(accessToken: string): Promise<AcademicYear[]> {
+  const response = await fetch(`${API_URL}/academic-years`, authed(accessToken));
+  return handleResponse<AcademicYear[]>(response);
+}
+
+export async function apiCreateAcademicYear(
+  accessToken: string,
+  input: AcademicYearInput,
+): Promise<AcademicYear> {
+  const response = await fetch(`${API_URL}/admin/academic-years`, authed(accessToken, 'POST', input));
+  return handleResponse<AcademicYear>(response);
+}
+
+export async function apiUpdateAcademicYear(
+  accessToken: string,
+  id: string,
+  input: Partial<AcademicYearInput>,
+): Promise<AcademicYear> {
+  const response = await fetch(`${API_URL}/admin/academic-years/${id}`, authed(accessToken, 'PATCH', input));
+  return handleResponse<AcademicYear>(response);
+}
+
+export async function apiDeleteAcademicYear(accessToken: string, id: string): Promise<void> {
+  const response = await fetch(`${API_URL}/admin/academic-years/${id}`, authed(accessToken, 'DELETE'));
+  return handleNoContent(response);
+}
+
+export async function apiListPlatformCalendars(
+  accessToken: string,
+  query: {
+    academicYearId?: string;
+    gradeLevelId?: string;
+    subjectId?: string;
+    status?: AcademicCalendarStatus;
+  } = {},
+): Promise<AcademicCalendarSummary[]> {
+  const params = new URLSearchParams();
+  if (query.academicYearId) params.set('academicYearId', query.academicYearId);
+  if (query.gradeLevelId) params.set('gradeLevelId', query.gradeLevelId);
+  if (query.subjectId) params.set('subjectId', query.subjectId);
+  if (query.status) params.set('status', query.status);
+  const response = await fetch(`${API_URL}/admin/academic-calendars?${params}`, authed(accessToken));
+  return handleResponse<AcademicCalendarSummary[]>(response);
+}
+
+export async function apiCreatePlatformCalendar(
+  accessToken: string,
+  input: { academicYearId: string; gradeLevelId: string; subjectId: string },
+): Promise<AcademicCalendarDetail> {
+  const response = await fetch(`${API_URL}/admin/academic-calendars`, authed(accessToken, 'POST', input));
+  return handleResponse<AcademicCalendarDetail>(response);
+}
+
+export async function apiGetSchoolCalendarOverview(
+  accessToken: string,
+  academicYearId: string,
+): Promise<SchoolCalendarOverview> {
+  const params = new URLSearchParams({ academicYearId });
+  const response = await fetch(`${API_URL}/school-academic-calendars?${params}`, authed(accessToken));
+  return handleResponse<SchoolCalendarOverview>(response);
+}
+
+export async function apiCreateSchoolCalendar(
+  accessToken: string,
+  input: { academicYearId: string; gradeLevelId: string; subjectId: string; copyFromDefault?: boolean },
+): Promise<AcademicCalendarDetail> {
+  const response = await fetch(`${API_URL}/school-academic-calendars`, authed(accessToken, 'POST', input));
+  return handleResponse<AcademicCalendarDetail>(response);
+}
+
+export async function apiGetCalendar(
+  accessToken: string,
+  kind: CalendarKind,
+  id: string,
+): Promise<AcademicCalendarDetail> {
+  const response = await fetch(`${API_URL}${CALENDAR_ROOT[kind]}/${id}`, authed(accessToken));
+  return handleResponse<AcademicCalendarDetail>(response);
+}
+
+// Publishing a default reaches every entitled school at once; publishing a school's own
+// calendar replaces the default for that school. Both take effect immediately.
+export async function apiSetCalendarPublished(
+  accessToken: string,
+  kind: CalendarKind,
+  id: string,
+  isPublished: boolean,
+): Promise<AcademicCalendarDetail> {
+  const action = isPublished ? 'publish' : 'unpublish';
+  const response = await fetch(
+    `${API_URL}${CALENDAR_ROOT[kind]}/${id}/${action}`,
+    authed(accessToken, 'POST'),
+  );
+  return handleResponse<AcademicCalendarDetail>(response);
+}
+
+export async function apiDeleteCalendar(accessToken: string, kind: CalendarKind, id: string): Promise<void> {
+  const response = await fetch(`${API_URL}${CALENDAR_ROOT[kind]}/${id}`, authed(accessToken, 'DELETE'));
+  return handleNoContent(response);
+}
+
+export async function apiAddCalendarEntry(
+  accessToken: string,
+  kind: CalendarKind,
+  id: string,
+  input: CalendarEntryInput,
+): Promise<AcademicCalendarEntry> {
+  const response = await fetch(
+    `${API_URL}${CALENDAR_ROOT[kind]}/${id}/entries`,
+    authed(accessToken, 'POST', input),
+  );
+  return handleResponse<AcademicCalendarEntry>(response);
+}
+
+export async function apiUpdateCalendarEntry(
+  accessToken: string,
+  kind: CalendarKind,
+  id: string,
+  entryId: string,
+  input: Partial<CalendarEntryInput>,
+): Promise<AcademicCalendarEntry> {
+  const response = await fetch(
+    `${API_URL}${CALENDAR_ROOT[kind]}/${id}/entries/${entryId}`,
+    authed(accessToken, 'PATCH', input),
+  );
+  return handleResponse<AcademicCalendarEntry>(response);
+}
+
+export async function apiDeleteCalendarEntry(
+  accessToken: string,
+  kind: CalendarKind,
+  id: string,
+  entryId: string,
+): Promise<void> {
+  const response = await fetch(
+    `${API_URL}${CALENDAR_ROOT[kind]}/${id}/entries/${entryId}`,
+    authed(accessToken, 'DELETE'),
+  );
+  return handleNoContent(response);
+}
+
+export async function apiListCalendarSettings(accessToken: string): Promise<AcademicCalendarSetting[]> {
+  const response = await fetch(`${API_URL}/academic-calendar-settings`, authed(accessToken));
+  return handleResponse<AcademicCalendarSetting[]>(response);
+}
+
+export async function apiUpdateCalendarSetting(
+  accessToken: string,
+  academicYearId: string,
+  isEnabled: boolean,
+): Promise<AcademicCalendarSetting> {
+  const response = await fetch(
+    `${API_URL}/academic-calendar-settings/${academicYearId}`,
+    authed(accessToken, 'PUT', { isEnabled }),
+  );
+  return handleResponse<AcademicCalendarSetting>(response);
+}
+
+export async function apiViewAcademicCalendar(
+  accessToken: string,
+  query: ViewAcademicCalendarQuery,
+): Promise<AcademicCalendarView> {
+  const params = new URLSearchParams();
+  if (query.academicYearId) params.set('academicYearId', query.academicYearId);
+  if (query.from) params.set('from', query.from);
+  if (query.to) params.set('to', query.to);
+  if (query.gradeLevelId) params.set('gradeLevelId', query.gradeLevelId);
+  if (query.subjectId) params.set('subjectId', query.subjectId);
+  const response = await fetch(`${API_URL}/academic-calendar?${params}`, authed(accessToken));
+  return handleResponse<AcademicCalendarView>(response);
+}
+
+export async function apiListCalendarPairs(accessToken: string): Promise<CalendarPair[]> {
+  const response = await fetch(`${API_URL}/academic-calendar/subjects`, authed(accessToken));
+  return handleResponse<CalendarPair[]>(response);
+}
+
+// No Content-Type header: undici derives the multipart boundary from the FormData.
+// The form carries `file`, and optionally `dryRun` / `replaceExisting` as 'true'.
+export async function apiImportCalendarEntries(
+  accessToken: string,
+  kind: CalendarKind,
+  id: string,
+  form: FormData,
+): Promise<CalendarImportResult> {
+  const response = await fetch(`${API_URL}${CALENDAR_ROOT[kind]}/${id}/entries/import`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: form,
+    cache: 'no-store',
+  });
+  return handleResponse<CalendarImportResult>(response);
+}
+
+export async function apiGetCalendarImportTemplate(
+  accessToken: string,
+  kind: CalendarKind,
+  id: string,
+): Promise<ArrayBuffer> {
+  const response = await fetch(`${API_URL}${CALENDAR_ROOT[kind]}/${id}/entries/import-template`, authed(accessToken));
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ message: response.statusText }));
+    throw new ApiError(response.status, body.message ?? 'Request failed');
+  }
+  return response.arrayBuffer();
 }

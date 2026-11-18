@@ -53,6 +53,8 @@ describe('GET /users/me (e2e)', () => {
 
     expect(Object.keys(response.body).sort()).toEqual([
       'email',
+      'enrollment',
+      'enrollments',
       'id',
       'name',
       'role',

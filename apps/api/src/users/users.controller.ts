@@ -1,5 +1,5 @@
-import { Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
-import { ApiBearerAuth, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Put } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { Roles, AnyRole } from '../common/decorators/roles.decorator';
 import { BypassTenantScope } from '../tenancy/decorators/bypass-tenant-scope.decorator';
@@ -9,6 +9,7 @@ import { InvitesService } from '../invites/invites.service';
 import { UsersService } from './users.service';
 import { UserEntity } from './entities/user.entity';
 import { MeEntity } from './entities/me.entity';
+import { SwitchCurrentEnrollmentDto } from './dto/switch-current-enrollment.dto';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -24,6 +25,18 @@ export class UsersController {
   @ApiResponse({ status: 200, type: MeEntity })
   me(@CurrentUser() user: AuthenticatedUser): Promise<MeEntity> {
     return this.usersService.getProfile(user);
+  }
+
+  @Put('me/current-enrollment')
+  @Roles(Role.STUDENT)
+  @ApiOperation({ summary: 'Switch the class a student is currently in' })
+  @ApiResponse({ status: 200, type: MeEntity })
+  @ApiResponse({ status: 404, description: 'Not one of the caller\'s active enrollments.' })
+  switchCurrentEnrollment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SwitchCurrentEnrollmentDto,
+  ): Promise<MeEntity> {
+    return this.usersService.switchCurrentEnrollment(user, dto.enrollmentId);
   }
 
   // Declared after 'me' so the literal segment isn't swallowed by this param route.

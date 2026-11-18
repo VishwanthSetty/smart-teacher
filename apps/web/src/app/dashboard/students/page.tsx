@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Role, UserStatus, type Student } from '@smart-teacher/shared-types';
+import { Role, UserStatus, type Student, type StudentEnrollment } from '@smart-teacher/shared-types';
 import { Plus, Upload, Users } from 'lucide-react';
 import { canRoleAccess } from '@/lib/nav';
 import { getAccessToken, requireUser } from '@/lib/session';
@@ -23,6 +23,24 @@ const STATUS_LABELS: Record<Student['status'], string> = {
   ACTIVE: 'Active',
   DISABLED: 'Disabled',
 };
+
+// Current class first (the API orders it so), marked only when there is a choice to mark.
+function StudentClassList({ enrollments }: { enrollments: StudentEnrollment[] }) {
+  if (enrollments.length === 0) {
+    return <>—</>;
+  }
+  return (
+    <ul className="space-y-0.5">
+      {enrollments.map((enrollment) => (
+        <li key={enrollment.id}>
+          {enrollment.gradeLevelName} - {enrollment.sectionName}
+          {enrollments.length > 1 && enrollment.rollNumber ? ` · #${enrollment.rollNumber}` : ''}
+          {enrollments.length > 1 && enrollment.isCurrent ? <span className="ml-1 text-xs text-gray-500">(current)</span> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 function parseStatus(value?: string): UserStatus | undefined {
   return value === UserStatus.PENDING || value === UserStatus.ACTIVE || value === UserStatus.DISABLED
@@ -180,11 +198,11 @@ export default async function StudentsPage({
           <tbody>
             {students.map((student) => (
               <tr key={student.id} className="border-b border-gray-100 last:border-b-0">
-                <td className="px-4 py-3 text-gray-600">{student.enrollment?.rollNumber ?? '—'}</td>
+                <td className="px-4 py-3 text-gray-600">{student.enrollments[0]?.rollNumber ?? '—'}</td>
                 <td className="px-4 py-3 font-medium">{student.name}</td>
                 <td className="px-4 py-3 text-gray-600">{student.email}</td>
                 <td className="px-4 py-3 text-gray-600">
-                  {student.enrollment ? `${student.enrollment.gradeLevelName} - ${student.enrollment.sectionName}` : '—'}
+                  <StudentClassList enrollments={student.enrollments} />
                 </td>
                 <td className="px-4 py-3 text-gray-600">{STATUS_LABELS[student.status]}</td>
                 {isAdmin && (
@@ -209,8 +227,8 @@ export default async function StudentsPage({
                 {isAdmin ? <StudentRowActions student={student} sections={sections} compact /> : null}
               </div>
               <dl className="mt-4 grid gap-2 text-sm">
-                <div className="flex justify-between gap-4"><dt className="text-ink-muted">Section</dt><dd className="text-right font-medium text-ink">{student.enrollment ? `${student.enrollment.gradeLevelName} · ${student.enrollment.sectionName}` : '—'}</dd></div>
-                <div className="flex justify-between gap-4"><dt className="text-ink-muted">Roll number</dt><dd className="font-medium text-ink">{student.enrollment?.rollNumber ?? '—'}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-ink-muted">{student.enrollments.length > 1 ? 'Classes' : 'Section'}</dt><dd className="text-right font-medium text-ink"><StudentClassList enrollments={student.enrollments} /></dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-ink-muted">Roll number</dt><dd className="font-medium text-ink">{student.enrollments[0]?.rollNumber ?? '—'}</dd></div>
               </dl>
             </article>
           ))}

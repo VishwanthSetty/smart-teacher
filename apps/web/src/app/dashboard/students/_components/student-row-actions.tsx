@@ -4,17 +4,21 @@ import { FormEvent, useState } from 'react';
 import { MoreHorizontal } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { UserStatus, type Section, type Student } from '@smart-teacher/shared-types';
+import { StudentClassesPanel } from './student-classes-panel';
 
 export function StudentRowActions({ student, sections, compact = false }: { student: Student; sections: Section[]; compact?: boolean }) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const [firstName, setFirstName] = useState(student.firstName ?? '');
   const [lastName, setLastName] = useState(student.lastName ?? '');
-  const [rollNumber, setRollNumber] = useState(student.enrollment?.rollNumber ?? '');
-  const [sectionId, setSectionId] = useState(student.enrollment?.sectionId ?? '');
+  // The edit form moves the student's current class; other classes live in the Classes panel.
+  const currentEnrollment = student.enrollments[0];
+  const [rollNumber, setRollNumber] = useState(currentEnrollment?.rollNumber ?? '');
+  const [sectionId, setSectionId] = useState(currentEnrollment?.sectionId ?? '');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isManagingClasses, setIsManagingClasses] = useState(false);
 
   const isDisabled = student.status === UserStatus.DISABLED;
   const statusLabel = isDisabled ? 'Reactivate' : 'Deactivate';
@@ -88,6 +92,10 @@ export function StudentRowActions({ student, sections, compact = false }: { stud
     router.refresh();
   }
 
+  if (isManagingClasses) {
+    return <StudentClassesPanel student={student} sections={sections} onClose={() => setIsManagingClasses(false)} />;
+  }
+
   if (isEditing) {
     return (
       <form onSubmit={handleEditSubmit} className="flex flex-wrap items-center justify-end gap-2">
@@ -148,7 +156,7 @@ export function StudentRowActions({ student, sections, compact = false }: { stud
     return (
       <div className="relative">
         <button type="button" onClick={() => setIsMenuOpen((value) => !value)} className="rounded-lg p-2 text-ink-muted hover:bg-brand-tint" aria-label={`Actions for ${student.name}`}><MoreHorizontal className="h-4 w-4" /></button>
-        {isMenuOpen ? <div className="absolute right-0 top-9 z-20 w-44 rounded-card border border-surface-border bg-white py-1 shadow-overlay">{error ? <p className="px-3 py-2 text-xs text-status-danger">{error}</p> : null}<button type="button" onClick={() => void viewPassword()} className="block w-full px-3 py-2 text-left text-sm hover:bg-brand-tint">View password</button><button type="button" onClick={() => void resetPassword()} className="block w-full px-3 py-2 text-left text-sm hover:bg-brand-tint">Reset password</button><button type="button" onClick={() => { setIsEditing(true); setIsMenuOpen(false); }} className="block w-full px-3 py-2 text-left text-sm hover:bg-brand-tint">Edit</button><button type="button" onClick={() => void handleStatusToggle()} className="block w-full px-3 py-2 text-left text-sm text-status-danger hover:bg-red-50">{statusLabel}</button></div> : null}
+        {isMenuOpen ? <div className="absolute right-0 top-9 z-20 w-44 rounded-card border border-surface-border bg-white py-1 shadow-overlay">{error ? <p className="px-3 py-2 text-xs text-status-danger">{error}</p> : null}<button type="button" onClick={() => void viewPassword()} className="block w-full px-3 py-2 text-left text-sm hover:bg-brand-tint">View password</button><button type="button" onClick={() => void resetPassword()} className="block w-full px-3 py-2 text-left text-sm hover:bg-brand-tint">Reset password</button><button type="button" onClick={() => { setIsEditing(true); setIsMenuOpen(false); }} className="block w-full px-3 py-2 text-left text-sm hover:bg-brand-tint">Edit</button><button type="button" onClick={() => { setIsManagingClasses(true); setIsMenuOpen(false); }} className="block w-full px-3 py-2 text-left text-sm hover:bg-brand-tint">Classes</button><button type="button" onClick={() => void handleStatusToggle()} className="block w-full px-3 py-2 text-left text-sm text-status-danger hover:bg-red-50">{statusLabel}</button></div> : null}
       </div>
     );
   }
@@ -168,6 +176,13 @@ export function StudentRowActions({ student, sections, compact = false }: { stud
         className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100"
       >
         Edit
+      </button>
+      <button
+        type="button"
+        onClick={() => setIsManagingClasses(true)}
+        className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100"
+      >
+        Classes
       </button>
       <button
         type="button"

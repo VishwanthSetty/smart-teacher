@@ -26,6 +26,8 @@ describe('TaxonomyService', () => {
     curriculum: { count: jest.Mock };
     teacherAssignment: { count: jest.Mock };
     section: { count: jest.Mock };
+    platformAcademicCalendar: { count: jest.Mock };
+    schoolAcademicCalendar: { count: jest.Mock };
     $transaction: jest.Mock;
   };
 
@@ -42,6 +44,8 @@ describe('TaxonomyService', () => {
       curriculum: { count: jest.fn().mockResolvedValue(0) },
       teacherAssignment: { count: jest.fn().mockResolvedValue(0) },
       section: { count: jest.fn().mockResolvedValue(0) },
+      platformAcademicCalendar: { count: jest.fn().mockResolvedValue(0) },
+      schoolAcademicCalendar: { count: jest.fn().mockResolvedValue(0) },
       $transaction: jest.fn((operations: unknown[]) => Promise.all(operations)),
     };
 
@@ -164,6 +168,14 @@ describe('TaxonomyService', () => {
 
       await expect(service.deleteGradeLevel('g5')).rejects.toThrow(ConflictException);
       expect(prisma.section.count).toHaveBeenCalledWith({ where: { gradeLevelId: 'g5' } });
+      expect(prisma.gradeLevel.delete).not.toHaveBeenCalled();
+    });
+
+    it('refuses to delete a grade level a school calendar still plans against', async () => {
+      prisma.gradeLevel.findUnique.mockResolvedValue({ id: 'g5' });
+      prisma.schoolAcademicCalendar.count.mockResolvedValue(1);
+
+      await expect(service.deleteGradeLevel('g5')).rejects.toThrow('academic calendars');
       expect(prisma.gradeLevel.delete).not.toHaveBeenCalled();
     });
 

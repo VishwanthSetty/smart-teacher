@@ -39,6 +39,9 @@ export class MeEnrollmentEntity {
 
   @ApiProperty({ nullable: true })
   rollNumber!: string | null;
+
+  @ApiProperty({ description: 'The class the student is currently switched into.' })
+  isCurrent!: boolean;
 }
 
 export class MeEntity {
@@ -60,6 +63,16 @@ export class MeEntity {
   @ApiProperty({ nullable: true, type: MeSchoolEntity })
   school!: MeSchoolEntity | null;
 
-  @ApiProperty({ nullable: true, type: MeEnrollmentEntity })
+  @ApiProperty({
+    nullable: true,
+    type: MeEnrollmentEntity,
+    description: 'The STUDENT\'s current class; null for other roles or an unplaced student.',
+  })
   enrollment!: MeEnrollmentEntity | null;
+
+  @ApiProperty({
+    type: [MeEnrollmentEntity],
+    description: 'Every ACTIVE class, current first. Drives the class switcher; empty for non-students.',
+  })
+  enrollments!: MeEnrollmentEntity[];
 }

@@ -450,6 +450,60 @@ export interface VideoUploadTicket {
   expiresInSecs: number;
 }
 
+// Mirrors `BulkContentKind` in apps/api/src/content-bulk/content-bulk.constants.ts.
+export enum BulkContentKind {
+  VIDEO = 'VIDEO',
+  DOCUMENT = 'DOCUMENT',
+}
+
+export interface BulkContentItemInput {
+  kind: BulkContentKind;
+  title: string;
+  description?: string;
+  contentNodeId: string;
+  contentType: string;
+  sizeBytes: number;
+}
+
+export interface CreateBulkContentInput {
+  items: BulkContentItemInput[];
+}
+
+export interface BulkContentCreateItem {
+  index: number;
+  kind: BulkContentKind;
+  ok: boolean;
+  id?: string;
+  uploadUrl?: string;
+  expiresInSecs?: number;
+  error?: string;
+}
+
+export interface BulkContentCreateResult {
+  createdCount: number;
+  failedCount: number;
+  items: BulkContentCreateItem[];
+}
+
+export interface ConfirmBulkContentInput {
+  items: { kind: BulkContentKind; id: string }[];
+}
+
+export interface BulkContentConfirmItem {
+  index: number;
+  kind: BulkContentKind;
+  id: string;
+  ok: boolean;
+  status?: string;
+  error?: string;
+}
+
+export interface BulkContentConfirmResult {
+  confirmedCount: number;
+  failedCount: number;
+  items: BulkContentConfirmItem[];
+}
+
 // Mirrors the `EnrollmentStatus` enum in apps/api/prisma/schema.prisma.
 export enum EnrollmentStatus {
   ACTIVE = 'ACTIVE',
@@ -510,6 +564,8 @@ export interface StudentEnrollment {
   gradeLevelId: string;
   gradeLevelName: string;
   rollNumber: string | null;
+  /** The class the student is currently switched into. */
+  isCurrent: boolean;
 }
 
 export interface Student {
@@ -522,7 +578,10 @@ export interface Student {
   status: UserStatus;
   activatedAt: string | null;
   createdAt: string;
+  /** @deprecated The current class only; a student may be in several — use `enrollments`. */
   enrollment: StudentEnrollment | null;
+  /** Every ACTIVE class, current first. */
+  enrollments: StudentEnrollment[];
 }
 
 export interface TeacherSubject {
@@ -774,4 +833,142 @@ export interface ApiErrorResponse {
   error: string;
   timestamp: string;
   path: string;
+}
+
+// ---------------------------------------------------------------------------
+// Academic calendar. Dates are 'YYYY-MM-DD' strings throughout.
+// ---------------------------------------------------------------------------
+
+export enum AcademicCalendarStatus {
+  DRAFT = 'DRAFT',
+  PUBLISHED = 'PUBLISHED',
+}
+
+export enum AcademicCalendarSource {
+  PLATFORM = 'PLATFORM',
+  SCHOOL = 'SCHOOL',
+}
+
+export interface AcademicYear {
+  id: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+}
+
+export interface CalendarGradeLevel {
+  id: string;
+  name: string;
+  rank: number;
+}
+
+export interface CalendarSubject {
+  id: string;
+  name: string;
+  code: string;
+}
+
+export interface CalendarPair {
+  gradeLevel: CalendarGradeLevel;
+  subject: CalendarSubject;
+}
+
+export interface AcademicCalendarEntry {
+  id: string;
+  date: string;
+  title: string;
+  description: string | null;
+}
+
+// The same shape for a platform default and a school's own calendar.
+export interface AcademicCalendarSummary {
+  id: string;
+  academicYear: AcademicYear;
+  gradeLevel: CalendarGradeLevel;
+  subject: CalendarSubject;
+  status: AcademicCalendarStatus;
+  publishedAt: string | null;
+  entryCount: number;
+}
+
+export interface AcademicCalendarDetail extends AcademicCalendarSummary {
+  entries: AcademicCalendarEntry[];
+}
+
+export interface SchoolCalendarOverviewRow {
+  gradeLevel: CalendarGradeLevel;
+  subject: CalendarSubject;
+  defaultCalendar: { id: string; entryCount: number } | null;
+  schoolCalendar: { id: string; status: AcademicCalendarStatus; entryCount: number } | null;
+  effectiveSource: AcademicCalendarSource | null;
+}
+
+export interface SchoolCalendarOverview {
+  academicYear: AcademicYear;
+  isEnabled: boolean;
+  rows: SchoolCalendarOverviewRow[];
+}
+
+export interface AcademicCalendarSetting {
+  academicYear: AcademicYear;
+  isEnabled: boolean;
+}
+
+export interface AcademicCalendarViewEntry extends AcademicCalendarEntry {
+  source: AcademicCalendarSource;
+  gradeLevel: CalendarGradeLevel;
+  subject: CalendarSubject;
+}
+
+export interface AcademicCalendarView {
+  academicYear: AcademicYear;
+  isEnabled: boolean;
+  from: string;
+  to: string;
+  entries: AcademicCalendarViewEntry[];
+}
+
+export interface AcademicYearInput {
+  label: string;
+  startDate: string;
+  endDate: string;
+}
+
+export interface CalendarEntryInput {
+  date: string;
+  title: string;
+  description?: string | null;
+}
+
+export interface ViewAcademicCalendarQuery {
+  academicYearId?: string;
+  from?: string;
+  to?: string;
+  gradeLevelId?: string;
+  subjectId?: string;
+}
+
+export interface CalendarImportRow {
+  rowNumber: number;
+  date: string;
+  title: string;
+  description: string | null;
+}
+
+export interface CalendarImportRowError {
+  rowNumber: number;
+  date: string;
+  title: string;
+  errors: string[];
+}
+
+export interface CalendarImportResult {
+  isCommitted: boolean;
+  replaceExisting: boolean;
+  totalRows: number;
+  rows: CalendarImportRow[];
+  errors: CalendarImportRowError[];
+  duplicateCount: number;
+  deletedCount: number;
+  createdCount: number;
 }

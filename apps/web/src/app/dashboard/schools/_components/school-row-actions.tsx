@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { MoreVertical, TriangleAlert } from 'lucide-react';
+import { TriangleAlert } from 'lucide-react';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { SchoolStatus } from '@smart-teacher/shared-types';
 import { Button } from '@/components/ui/button';
+import { RowActionsMenu } from '@/components/ui/row-actions-menu';
 
 export function SchoolRowActions({ id, name, status }: { id: string; name: string; status: SchoolStatus }) {
   const router = useRouter();
@@ -29,23 +30,17 @@ export function SchoolRowActions({ id, name, status }: { id: string; name: strin
 
   return (
     <>
-      <details className="relative inline-block text-left">
-        <summary className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-lg text-ink-muted hover:bg-brand-tint hover:text-brand-navy">
-          <MoreVertical className="h-4 w-4" />
-          <span className="sr-only">School actions</span>
-        </summary>
-        <div className="absolute right-0 z-10 mt-1 w-44 rounded-lg border border-surface-border bg-white p-1 text-left shadow-overlay">
-          <Link href={`/dashboard/entitlements/${id}`} className="block rounded-md px-3 py-2 text-sm text-ink hover:bg-brand-tint">View entitlements</Link>
-          <button className="block w-full rounded-md px-3 py-2 text-left text-sm text-ink hover:bg-brand-tint" type="button">Edit details</button>
-          <button
-            type="button"
-            onClick={() => setIsConfirming(true)}
-            className={`block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-red-50 ${status === SchoolStatus.ACTIVE ? 'text-status-danger' : 'text-status-success'}`}
-          >
-            {status === SchoolStatus.ACTIVE ? 'Suspend school' : 'Reactivate school'}
-          </button>
-        </div>
-      </details>
+      <RowActionsMenu label={`Actions for ${name}`} className="w-44 p-1">
+        <Link href={`/dashboard/entitlements/${id}`} className="block rounded-md px-3 py-2 text-sm text-ink hover:bg-brand-tint">View entitlements</Link>
+        <button className="block w-full rounded-md px-3 py-2 text-left text-sm text-ink hover:bg-brand-tint" type="button">Edit details</button>
+        <button
+          type="button"
+          onClick={() => setIsConfirming(true)}
+          className={`block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-red-50 ${status === SchoolStatus.ACTIVE ? 'text-status-danger' : 'text-status-success'}`}
+        >
+          {status === SchoolStatus.ACTIVE ? 'Suspend school' : 'Reactivate school'}
+        </button>
+      </RowActionsMenu>
 
       {isConfirming ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4" role="dialog" aria-modal="true">

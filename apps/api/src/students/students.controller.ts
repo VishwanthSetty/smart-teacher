@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   HttpCode,
@@ -36,6 +37,8 @@ import { SetUserPasswordDto } from '../passwords/dto/set-user-password.dto';
 import { ConfirmImportDto } from '../passwords/dto/confirm-import.dto';
 import { UserPasswordEntity } from '../passwords/entities/user-password.entity';
 import { UpdateStudentDto } from './dto/update-student.dto';
+import { AddStudentEnrollmentDto } from './dto/add-student-enrollment.dto';
+import { UpdateStudentEnrollmentDto } from './dto/update-student-enrollment.dto';
 import { ListStudentsQueryDto } from './dto/list-students-query.dto';
 import { StudentEntity } from './entities/student.entity';
 import { PaginatedStudentsEntity } from './entities/paginated-students.entity';
@@ -167,5 +170,39 @@ export class StudentsController {
   @ApiResponse({ status: 409, description: 'Roll number already in use in the target section.' })
   update(@Param('id') id: string, @Body() dto: UpdateStudentDto): Promise<StudentEntity> {
     return this.studentsService.update(id, dto);
+  }
+
+  @Post(':id/enrollments')
+  @Roles(Role.SCHOOL_ADMIN)
+  @ApiOperation({ summary: 'Add a class to the student, alongside their existing ones' })
+  @ApiResponse({ status: 201, type: StudentEntity })
+  @ApiResponse({ status: 404, description: 'Student or section not found.' })
+  @ApiResponse({ status: 409, description: 'Already enrolled in that section, or roll number in use.' })
+  addEnrollment(@Param('id') id: string, @Body() dto: AddStudentEnrollmentDto): Promise<StudentEntity> {
+    return this.studentsService.addEnrollment(id, dto);
+  }
+
+  @Patch(':id/enrollments/:enrollmentId')
+  @Roles(Role.SCHOOL_ADMIN)
+  @ApiOperation({ summary: 'Change the roll number in one of the student classes' })
+  @ApiResponse({ status: 200, type: StudentEntity })
+  @ApiResponse({ status: 404, description: 'Student or enrollment not found.' })
+  @ApiResponse({ status: 409, description: 'Roll number already in use in that section.' })
+  updateEnrollment(
+    @Param('id') id: string,
+    @Param('enrollmentId') enrollmentId: string,
+    @Body() dto: UpdateStudentEnrollmentDto,
+  ): Promise<StudentEntity> {
+    return this.studentsService.updateEnrollment(id, enrollmentId, dto);
+  }
+
+  @Delete(':id/enrollments/:enrollmentId')
+  @Roles(Role.SCHOOL_ADMIN)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Remove the student from one class; history is kept' })
+  @ApiResponse({ status: 204, description: 'Enrollment ended.' })
+  @ApiResponse({ status: 404, description: 'Student or enrollment not found.' })
+  removeEnrollment(@Param('id') id: string, @Param('enrollmentId') enrollmentId: string): Promise<void> {
+    return this.studentsService.removeEnrollment(id, enrollmentId);
   }
 }

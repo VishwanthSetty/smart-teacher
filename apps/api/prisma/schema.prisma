@@ -62,58 +62,102 @@ enum DocumentStatus {
   FAILED
 }
 
+enum ResourceType {
+  VIDEO
+  DOCUMENT
+}
+
+enum ProgressStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum TaskStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_REMINDER
+  TASK_DUE_SOON
+  TEACHER_DAILY_SUMMARY
+}
+
 model School {
-  id                  String                     @id @default(cuid())
-  name                String
-  slug                String                     @unique
-  academicYear        String
-  status              SchoolStatus               @default(ACTIVE)
-  plan                Plan                       @default(FREE)
-  createdAt           DateTime                   @default(now())
-  updatedAt           DateTime                   @updatedAt
-  users               User[]
-  entitlements        SchoolContentEntitlement[]
-  teacherAssignments  TeacherAssignment[]
-  teacherImportBatches TeacherImportBatch[]
-  sections            Section[]
-  enrollments         Enrollment[]
-  studentImportBatches StudentImportBatch[]
+  id                       String                          @id @default(cuid())
+  name                     String
+  slug                     String                          @unique
+  academicYear             String
+  status                   SchoolStatus                    @default(ACTIVE)
+  plan                     Plan                            @default(FREE)
+  createdAt                DateTime                        @default(now())
+  updatedAt                DateTime                        @updatedAt
+  users                    User[]
+  entitlements             SchoolContentEntitlement[]
+  teacherAssignments       TeacherAssignment[]
+  teacherImportBatches     TeacherImportBatch[]
+  sections                 Section[]
+  enrollments              Enrollment[]
+  studentImportBatches     StudentImportBatch[]
+  resourceActivities       ResourceActivity[]
+  bookmarks                Bookmark[]
+  collections              Collection[]
+  tasks                    Task[]
+  taskAssignments          TaskAssignment[]
+  taskReminders            TaskReminder[]
+  notifications            Notification[]
+  notificationPreferences  NotificationPreference[]
+  deviceTokens             DeviceToken[]
+  academicCalendars        SchoolAcademicCalendar[]
+  academicCalendarEntries  SchoolAcademicCalendarEntry[]
+  academicCalendarSettings SchoolAcademicCalendarSetting[]
 }
 
 model User {
-  id                   String         @id @default(cuid())
-  email                String
-  passwordHash         String?
+  id                     String                  @id @default(cuid())
+  email                  String
+  passwordHash           String?
   // Admin-readable copy for teacher/student accounts provisioned directly by a school.
   // Deliberately plaintext: passwordHash remains the only value authentication checks.
-  plainPassword        String?
-  name                 String
+  plainPassword          String?
+  name                   String
   // First/last name are collected on the student onboarding form and recomposed into
   // `name` on every write; nullable because teachers/admins created before this feature
   // (and platform users) never had them split out.
-  firstName            String?
-  lastName             String?
-  role                 Role           @default(TEACHER)
-  status               UserStatus     @default(ACTIVE)
+  firstName              String?
+  lastName               String?
+  role                   Role                    @default(TEACHER)
+  status                 UserStatus              @default(ACTIVE)
   // sha256 hex of the raw invite token — unique so the token alone is a direct lookup key.
-  inviteTokenHash      String?        @unique
-  inviteTokenExpiresAt DateTime?
+  inviteTokenHash        String?                 @unique
+  inviteTokenExpiresAt   DateTime?
   // sha256 hex of the raw password-reset token — unique for the same direct-lookup
   // reason as the invite hash. Nulling it on redemption is what makes a link single-use.
-  resetTokenHash       String?        @unique
-  resetTokenExpiresAt  DateTime?
-  activatedAt          DateTime?
-  schoolId             String?
+  resetTokenHash         String?                 @unique
+  resetTokenExpiresAt    DateTime?
+  activatedAt            DateTime?
+  schoolId               String?
   // Restrict, not SetNull: SetNull would launder a deleted school's users into the
   // platform (null-school) scope, where tenant scoping no longer applies to them at all.
-  school               School?        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  refreshTokens        RefreshToken[]
-  teacherAssignments   TeacherAssignment[]
-  teacherImportBatches TeacherImportBatch[]
-  enrollments          Enrollment[]
-  studentImportBatches StudentImportBatch[]
-  createdAt            DateTime       @default(now())
-  updatedAt            DateTime       @updatedAt
+  school                 School?                 @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  refreshTokens          RefreshToken[]
+  teacherAssignments     TeacherAssignment[]
+  teacherImportBatches   TeacherImportBatch[]
+  enrollments            Enrollment[]
+  studentImportBatches   StudentImportBatch[]
+  resourceActivities     ResourceActivity[]
+  bookmarks              Bookmark[]
+  collections            Collection[]
+  tasksCreated           Task[]                  @relation("TasksCreated")
+  tasksReceived          TaskAssignment[]        @relation("TasksReceived")
+  taskRemindersSent      TaskReminder[]
+  notifications          Notification[]
+  notificationPreference NotificationPreference?
+  deviceTokens           DeviceToken[]
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
 
   // Email is unique per tenant, not globally. Platform users (SUPER_ADMIN) have a
   // null schoolId; a partial unique index in the migration enforces their uniqueness,
@@ -173,41 +217,49 @@ model LoginAttempt {
 // ---------------------------------------------------------------------------
 
 model GradeLevel {
-  id        String       @id @default(cuid())
-  name      String       @unique
-  rank      Int          @unique // display order, e.g. 5 for "Grade 5"
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  id                        String                     @id @default(cuid())
+  name                      String                     @unique
+  rank                      Int                        @unique // display order, e.g. 5 for "Grade 5"
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
   // Videos and entitlements no longer hang off a grade level directly — both reach it
   // through Curriculum, which is the one row per (gradeLevel, subject) the platform
   // authors content against.
-  curricula Curriculum[]
+  curricula                 Curriculum[]
   // This back-relation makes a tenant-scoped model reachable from GradeLevel, so
   // GradeLevel queries now enter the tenant guard's nested walker. Reads that select
   // only scalar columns still pass straight through — never `include` this relation
   // from a GradeLevel root; query Section directly instead.
-  sections  Section[]
+  sections                  Section[]
   // Like sections, this tenant-scoped back-relation must never be included from a
   // GradeLevel root; query TeacherAssignment directly instead.
-  teacherAssignments TeacherAssignment[]
+  teacherAssignments        TeacherAssignment[]
+  platformAcademicCalendars PlatformAcademicCalendar[]
+  // Tenant-scoped back-relation, same rule as sections: never include it from a
+  // GradeLevel root; query SchoolAcademicCalendar directly instead.
+  schoolAcademicCalendars   SchoolAcademicCalendar[]
 }
 
 model Subject {
-  id                 String              @id @default(cuid())
-  name               String
+  id                        String                     @id @default(cuid())
+  name                      String
   // The canonical platform-wide handle every curriculum and timetable slot joins on.
   // Immutable once created — nothing may PATCH it.
-  code               String              @unique
-  status             SubjectStatus       @default(ACTIVE)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  code                      String                     @unique
+  status                    SubjectStatus              @default(ACTIVE)
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
   // Videos and entitlements reach a subject through Curriculum, not directly.
-  curricula          Curriculum[]
+  curricula                 Curriculum[]
   // This back-relation makes a tenant-scoped model reachable from Subject, so Subject
   // queries now enter the tenant guard's nested walker. Reads that select only scalar
   // columns still pass straight through — never `include` this relation from a Subject
   // root; query TeacherAssignment directly instead.
-  teacherAssignments TeacherAssignment[]
+  teacherAssignments        TeacherAssignment[]
+  platformAcademicCalendars PlatformAcademicCalendar[]
+  // Tenant-scoped back-relation: never include it from a Subject root; query
+  // SchoolAcademicCalendar directly instead.
+  schoolAcademicCalendars   SchoolAcademicCalendar[]
 }
 
 // ---------------------------------------------------------------------------
@@ -340,26 +392,26 @@ enum VideoStatus {
 }
 
 model Video {
-  id           String      @id @default(cuid())
-  title        String
-  description  String?
+  id            String      @id @default(cuid())
+  title         String
+  description   String?
   // Provider-agnostic handle, resolved to a playback URL by the video adapter (F-19).
   // Never store a signed URL: it would outlive the entitlement check that produced it.
   //
   // Nullable because ingest creates the row *before* the media exists: the transcoder
   // produces this handle, so an UPLOADING/QUEUED row cannot have one yet.
-  externalId   String?
-  status       VideoStatus @default(UPLOADING)
+  externalId    String?
+  status        VideoStatus @default(UPLOADING)
   // Object key in the ingest bucket, "{videoId}/source.mp4". Unique so two rows can
   // never claim the same object. Null until the row's id exists to derive it from.
-  sourceKey    String?     @unique
+  sourceKey     String?     @unique
   // Null follows RETAIN_INGEST_SOURCE; an explicit value is the per-video override.
-  retainSource Boolean?
+  retainSource  Boolean?
   // The *verified* size and type, read back off the object at confirm time — never the
   // values the client declared when it asked for the upload URL.
-  sizeBytes    Int?
-  contentType  String?
-  durationSecs Int?
+  sizeBytes     Int?
+  contentType   String?
+  durationSecs  Int?
   // Where this video sits in the curriculum tree. Non-null: a video always belongs to a
   // node, chosen at ingest, so there is no window in which content exists outside the
   // structure schools browse. The grade level and subject are reached through
@@ -373,10 +425,13 @@ model Video {
   playlistKey        String? // "videos/{videoId}/master.m3u8"
   posterKey          String?
   renditions         VideoRendition[]
+  resourceActivities ResourceActivity[]
+  bookmarks          Bookmark[]
+  tasks              Task[]
 
   // Why the last attempt failed, in words an admin can act on. The worker maps ffmpeg's
   // stderr to a short sanitised reason; raw stderr never reaches this column.
-  failureReason      String?
+  failureReason String?
 
   // Fencing token. Incremented on every enqueue and echoed by every callback; a callback
   // carrying a stale value belongs to a superseded attempt and is refused. Without it, a
@@ -385,8 +440,8 @@ model Video {
   transcodeAttempts  Int       @default(0)
   transcodeStartedAt DateTime?
 
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Every school-facing read filters through this to the node's curriculum, which is
   // the entitlement key.
@@ -422,18 +477,22 @@ model VideoRendition {
 }
 
 model Document {
-  id            String         @id @default(cuid())
-  title         String
-  description   String?
-  status        DocumentStatus @default(UPLOADING)
-  sourceKey     String?        @unique
-  sizeBytes     Int?
-  contentType   String?
-  failureReason String?
-  contentNodeId String
-  node          ContentNode    @relation(fields: [contentNodeId], references: [id])
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id                 String             @id @default(cuid())
+  title              String
+  description        String?
+  status             DocumentStatus     @default(UPLOADING)
+  sourceKey          String?            @unique
+  sizeBytes          Int?
+  contentType        String?
+  failureReason      String?
+  pageCount          Int?
+  contentNodeId      String
+  node               ContentNode        @relation(fields: [contentNodeId], references: [id])
+  resourceActivities ResourceActivity[]
+  bookmarks          Bookmark[]
+  tasks              Task[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
   @@index([contentNodeId])
   @@index([status])
@@ -482,20 +541,20 @@ enum TeacherImportBatchStatus {
 //   CREATE UNIQUE INDEX "TeacherAssignment_sectionId_subjectId_key"
 //     ON "TeacherAssignment"("sectionId", "subjectId") WHERE "sectionId" IS NOT NULL;
 model TeacherAssignment {
-  id        String   @id @default(cuid())
-  schoolId  String
-  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  subjectId String
-  subject   Subject  @relation(fields: [subjectId], references: [id])
-  sectionId String?
+  id           String      @id @default(cuid())
+  schoolId     String
+  school       School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId    String
+  subject      Subject     @relation(fields: [subjectId], references: [id])
+  sectionId    String?
   // Restrict, not Cascade: deleting a section must not silently unstaff its subjects.
-  section   Section? @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  section      Section?    @relation(fields: [sectionId], references: [id], onDelete: Restrict)
   gradeLevelId String?
   // Restrict prevents deletion from silently widening a teacher back to grade-less scope.
   gradeLevel   GradeLevel? @relation(fields: [gradeLevelId], references: [id], onDelete: Restrict)
-  createdAt DateTime @default(now())
+  createdAt    DateTime    @default(now())
 
   @@index([schoolId])
   @@index([userId])
@@ -540,32 +599,36 @@ enum EnrollmentStatus {
 // A class/section within a school, pinned to a platform grade level. Tenant-scoped:
 // "Grade 5 - A" only means anything inside one school.
 model Section {
-  id           String       @id @default(cuid())
-  schoolId     String
-  school       School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  gradeLevelId String
-  gradeLevel   GradeLevel   @relation(fields: [gradeLevelId], references: [id])
-  name         String // "A", "Blue" — the grade level supplies the rest of the label
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  enrollments  Enrollment[]
+  id                 String              @id @default(cuid())
+  schoolId           String
+  school             School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  gradeLevelId       String
+  gradeLevel         GradeLevel          @relation(fields: [gradeLevelId], references: [id])
+  name               String // "A", "Blue" — the grade level supplies the rest of the label
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  enrollments        Enrollment[]
   // This back-relation makes a tenant-scoped model reachable from Section, so Section
   // queries now enter the tenant guard's nested walker. Reads that select only scalar
   // columns still pass straight through — never `include` this relation from a Section
   // root; query TeacherAssignment directly instead.
   teacherAssignments TeacherAssignment[]
+  tasks              Task[]
 
   @@unique([schoolId, gradeLevelId, name])
   @@index([schoolId])
 }
 
-// Many-to-many by design so multi-section students can be allowed later without a
-// migration; today two partial unique indexes (added by hand in the migration, since
-// @@unique cannot express a WHERE clause) cap it at one ACTIVE enrollment per student
-// and one ACTIVE roll number per section. Changing section ENDs the old row and inserts
-// a new one, so a student's placement history survives:
-//   CREATE UNIQUE INDEX "Enrollment_userId_active_key"
-//     ON "Enrollment"("userId") WHERE "status" = 'ACTIVE';
+// A student may hold several ACTIVE enrollments at once (classes may span grade levels)
+// and switches between them; `isCurrent` marks the one they are "in". Partial unique
+// indexes (added by hand in the migrations, since @@unique cannot express a WHERE clause)
+// cap it at one current class per student, one ACTIVE enrollment per (student, section)
+// and one ACTIVE roll number per section. Leaving a class ENDs the row rather than
+// deleting it, so a student's placement history survives:
+//   CREATE UNIQUE INDEX "Enrollment_userId_current_key"
+//     ON "Enrollment"("userId") WHERE "status" = 'ACTIVE' AND "isCurrent";
+//   CREATE UNIQUE INDEX "Enrollment_userId_sectionId_active_key"
+//     ON "Enrollment"("userId", "sectionId") WHERE "status" = 'ACTIVE';
 //   CREATE UNIQUE INDEX "Enrollment_sectionId_rollNumber_active_key"
 //     ON "Enrollment"("sectionId", "rollNumber") WHERE "status" = 'ACTIVE' AND "rollNumber" IS NOT NULL;
 model Enrollment {
@@ -579,12 +642,194 @@ model Enrollment {
   section    Section          @relation(fields: [sectionId], references: [id], onDelete: Restrict)
   rollNumber String?
   status     EnrollmentStatus @default(ACTIVE)
+  // Exactly one per student with any ACTIVE enrollment — at most one by partial index,
+  // at least one because EnrollmentsService is the only writer and promotes on end.
+  isCurrent  Boolean          @default(false)
   startedAt  DateTime         @default(now())
   endedAt    DateTime?
 
   @@index([schoolId])
   @@index([userId, status])
   @@index([sectionId, status])
+}
+
+// Tenant-owned activity points at platform-global content through constrained foreign
+// keys. The absence of a row is the canonical NOT_STARTED state.
+model ResourceActivity {
+  id               String         @id @default(cuid())
+  schoolId         String
+  school           School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resourceType     ResourceType
+  videoId          String?
+  video            Video?         @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  documentId       String?
+  document         Document?      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  status           ProgressStatus @default(IN_PROGRESS)
+  positionSecs     Int            @default(0)
+  watchedIntervals Json           @default("[]")
+  coveredSecs      Int            @default(0)
+  percent          Int            @default(0)
+  lastPage         Int?
+  pageCount        Int?
+  markedCompleteAt DateTime?
+  completedAt      DateTime?
+  firstAccessedAt  DateTime       @default(now())
+  lastAccessedAt   DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([userId, videoId])
+  @@unique([userId, documentId])
+  @@index([schoolId, userId, lastAccessedAt])
+  @@index([schoolId, userId, status])
+  @@index([videoId])
+  @@index([documentId])
+}
+
+model Collection {
+  id        String     @id @default(cuid())
+  schoolId  String
+  school    School     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  ownerId   String
+  owner     User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  sortOrder Int
+  bookmarks Bookmark[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([ownerId, name])
+  @@index([schoolId, ownerId])
+}
+
+model Bookmark {
+  id           String       @id @default(cuid())
+  schoolId     String
+  school       School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resourceType ResourceType
+  videoId      String?
+  video        Video?       @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  documentId   String?
+  document     Document?    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  collectionId String?
+  collection   Collection?  @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  createdAt    DateTime     @default(now())
+
+  @@unique([userId, videoId])
+  @@unique([userId, documentId])
+  @@index([schoolId, userId, createdAt])
+  @@index([collectionId])
+}
+
+model Task {
+  id           String           @id @default(cuid())
+  schoolId     String
+  school       School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdById  String
+  createdBy    User             @relation("TasksCreated", fields: [createdById], references: [id], onDelete: Cascade)
+  title        String
+  instructions String?
+  dueAt        DateTime?
+  resourceType ResourceType
+  videoId      String?
+  video        Video?           @relation(fields: [videoId], references: [id], onDelete: Restrict)
+  documentId   String?
+  document     Document?        @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  status       TaskStatus       @default(ACTIVE)
+  cancelledAt  DateTime?
+  sectionId    String?
+  section      Section?         @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  assignments  TaskAssignment[]
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([schoolId, createdById, createdAt])
+  @@index([schoolId, status, dueAt])
+}
+
+model TaskAssignment {
+  id             String         @id @default(cuid())
+  schoolId       String
+  school         School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  taskId         String
+  task           Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  studentId      String
+  student        User           @relation("TasksReceived", fields: [studentId], references: [id], onDelete: Cascade)
+  status         ProgressStatus @default(NOT_STARTED)
+  completedAt    DateTime?
+  preCompletedAt DateTime?
+  reminders      TaskReminder[]
+  createdAt      DateTime       @default(now())
+
+  @@unique([taskId, studentId])
+  @@index([schoolId, studentId, status])
+  @@index([taskId, status])
+}
+
+model TaskReminder {
+  id               String         @id @default(cuid())
+  schoolId         String
+  school           School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  taskAssignmentId String
+  taskAssignment   TaskAssignment @relation(fields: [taskAssignmentId], references: [id], onDelete: Cascade)
+  sentById         String
+  sentBy           User           @relation(fields: [sentById], references: [id], onDelete: Cascade)
+  sentOn           DateTime       @db.Date
+  createdAt        DateTime       @default(now())
+
+  @@unique([taskAssignmentId, sentOn])
+  @@index([schoolId, createdAt])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  schoolId  String
+  school    School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String
+  data      Json             @default("{}")
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([schoolId, userId, createdAt])
+  @@index([schoolId, userId, readAt])
+}
+
+model NotificationPreference {
+  id                   String   @id @default(cuid())
+  schoolId             String
+  school               School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  inAppEnabled         Boolean  @default(true)
+  pushEnabled          Boolean  @default(true)
+  taskRemindersEnabled Boolean  @default(true)
+  dueSoonLeadMins      Int?     @default(1440)
+  quietFromMins        Int?
+  quietToMins          Int?
+  updatedAt            DateTime @updatedAt
+
+  @@index([schoolId])
+}
+
+model DeviceToken {
+  id         String   @id @default(cuid())
+  schoolId   String
+  school     School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform   String
+  token      String   @unique
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([schoolId, userId])
 }
 
 // ---------------------------------------------------------------------------
@@ -601,13 +846,13 @@ enum StudentImportBatchStatus {
 // A distinct enum/model rather than reusing the teacher one — the two imports are
 // expected to diverge (a student batch may later gain a PARTIALLY_COMMITTED status).
 model StudentImportBatch {
-  id           String                    @id @default(cuid())
+  id           String                   @id @default(cuid())
   schoolId     String
-  school       School                    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  school       School                   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   createdById  String
-  createdBy    User                      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdBy    User                     @relation(fields: [createdById], references: [id], onDelete: Cascade)
   fileName     String
-  status       StudentImportBatchStatus  @default(DRAFT)
+  status       StudentImportBatchStatus @default(DRAFT)
   totalRows    Int
   validCount   Int
   invalidCount Int
@@ -615,7 +860,133 @@ model StudentImportBatch {
   invalidRows  Json
   warnings     Json
   committedAt  DateTime?
-  createdAt    DateTime                  @default(now())
+  createdAt    DateTime                 @default(now())
 
   @@index([schoolId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Academic calendar — a day-by-day lesson plan per (grade level, subject, academic year)
+//
+// Platform defaults and school calendars are separate tables rather than one table with
+// a nullable schoolId: tenant scoping keys on a non-null schoolId, so a nullable one
+// would either hide every default from schools or need a bespoke bypass. Same split as
+// Curriculum (global) / SchoolContentEntitlement (tenant).
+//
+// Entries are deliberately plain text today. They key on the same (grade, subject) spine
+// as Curriculum, so linking an entry to a lesson or video later is an additive nullable
+// FK (contentNodeId / videoId, onDelete SetNull) on both entry tables — see
+// docs/2026-11-02-academic-calendar-plan.md §2.
+// ---------------------------------------------------------------------------
+
+enum AcademicCalendarStatus {
+  DRAFT
+  PUBLISHED
+}
+
+// Platform-global: defaults are authored per year for every school, so the year itself
+// has to be platform-wide. School.academicYear remains an independent free-text label.
+//
+// The school* back-relations are tenant-scoped, so AcademicYear queries enter the tenant
+// guard's nested walker. Select scalars only from an AcademicYear root; query the
+// school models directly instead of including them.
+model AcademicYear {
+  id                String                          @id @default(cuid())
+  label             String                          @unique // "2026-2027"
+  startDate         DateTime                        @db.Date
+  endDate           DateTime                        @db.Date
+  createdAt         DateTime                        @default(now())
+  updatedAt         DateTime                        @updatedAt
+  platformCalendars PlatformAcademicCalendar[]
+  schoolCalendars   SchoolAcademicCalendar[]
+  calendarSettings  SchoolAcademicCalendarSetting[]
+}
+
+// The SUPER_ADMIN's default plan. Reaches a school only through
+// SchoolContentEntitlement — a school sees the default for a pair only while it holds a
+// published curriculum for that same (gradeLevel, subject).
+model PlatformAcademicCalendar {
+  id             String                          @id @default(cuid())
+  academicYearId String
+  academicYear   AcademicYear                    @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  gradeLevelId   String
+  gradeLevel     GradeLevel                      @relation(fields: [gradeLevelId], references: [id], onDelete: Restrict)
+  subjectId      String
+  subject        Subject                         @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  status         AcademicCalendarStatus          @default(DRAFT)
+  publishedAt    DateTime?
+  entries        PlatformAcademicCalendarEntry[]
+  createdAt      DateTime                        @default(now())
+  updatedAt      DateTime                        @updatedAt
+
+  @@unique([academicYearId, gradeLevelId, subjectId])
+  @@index([academicYearId, status])
+}
+
+model PlatformAcademicCalendarEntry {
+  id          String                   @id @default(cuid())
+  calendarId  String
+  calendar    PlatformAcademicCalendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  date        DateTime                 @db.Date
+  title       String
+  description String?
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+
+  @@index([calendarId, date])
+}
+
+// A school's own plan for one pair. Once PUBLISHED it replaces the platform default for
+// that school and pair only; a DRAFT never hides the default, so a half-built override
+// cannot blank a class's calendar.
+model SchoolAcademicCalendar {
+  id             String                        @id @default(cuid())
+  schoolId       String
+  school         School                        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear                  @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  gradeLevelId   String
+  gradeLevel     GradeLevel                    @relation(fields: [gradeLevelId], references: [id], onDelete: Restrict)
+  subjectId      String
+  subject        Subject                       @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  status         AcademicCalendarStatus        @default(DRAFT)
+  publishedAt    DateTime?
+  entries        SchoolAcademicCalendarEntry[]
+  createdAt      DateTime                      @default(now())
+  updatedAt      DateTime                      @updatedAt
+
+  @@unique([schoolId, academicYearId, gradeLevelId, subjectId])
+  @@index([schoolId, academicYearId, status])
+}
+
+// Carries its own schoolId (rather than inheriting through the calendar) so the tenant
+// guard scopes entry reads and writes directly, the same way TaskAssignment does.
+model SchoolAcademicCalendarEntry {
+  id          String                 @id @default(cuid())
+  schoolId    String
+  school      School                 @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  calendarId  String
+  calendar    SchoolAcademicCalendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  date        DateTime               @db.Date
+  title       String
+  description String?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@index([schoolId])
+  @@index([calendarId, date])
+}
+
+// Per-year opt-in. No row means enabled: opting out is the explicit act, and a school
+// onboarded mid-year sees the default plan without an extra setup step.
+model SchoolAcademicCalendarSetting {
+  id             String       @id @default(cuid())
+  schoolId       String
+  school         School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  isEnabled      Boolean      @default(true)
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([schoolId, academicYearId])
 }

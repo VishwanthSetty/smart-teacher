@@ -93,15 +93,23 @@ export class TaxonomyService {
     // route through the tenant guard's relation walker and either throw
     // MissingTenantContextError (SUPER_ADMIN has no schoolId) or answer "in this one
     // tenant" — the wrong question for a platform-wide check.
-    const [curriculumCount, sectionCount, assignmentCount] = await this.prisma.$transaction([
-      this.prisma.curriculum.count({ where: { gradeLevelId: id } }),
-      this.prisma.section.count({ where: { gradeLevelId: id } }),
-      this.prisma.teacherAssignment.count({ where: { gradeLevelId: id } }),
-    ]);
+    const [curriculumCount, sectionCount, assignmentCount, platformCalendarCount, schoolCalendarCount] =
+      await this.prisma.$transaction([
+        this.prisma.curriculum.count({ where: { gradeLevelId: id } }),
+        this.prisma.section.count({ where: { gradeLevelId: id } }),
+        this.prisma.teacherAssignment.count({ where: { gradeLevelId: id } }),
+        this.prisma.platformAcademicCalendar.count({ where: { gradeLevelId: id } }),
+        this.prisma.schoolAcademicCalendar.count({ where: { gradeLevelId: id } }),
+      ]);
     if (curriculumCount > 0 || sectionCount > 0 || assignmentCount > 0) {
       throw new ConflictException(
         'This grade level is still used by curricula, sections or teacher assignments',
       );
+    }
+    // A school calendar can outlive the curriculum it was planned against (the grant is
+    // revoked, then the curriculum deleted), so this is not subsumed by the count above.
+    if (platformCalendarCount > 0 || schoolCalendarCount > 0) {
+      throw new ConflictException('This grade level is still used by academic calendars');
     }
 
     await this.prisma.gradeLevel.delete({ where: { id } });

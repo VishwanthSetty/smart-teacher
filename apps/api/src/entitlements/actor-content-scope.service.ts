@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ContentAudience, Role } from '@prisma/client';
 import { ContentEntitlementsService } from './content-entitlements.service';
-import { EnrollmentsService } from '../students/enrollments.service';
+import { EnrollmentLookupService } from '../students/enrollment-lookup.service';
 import type { ActorScope } from '../common/authorization/resource-access';
 import { TeacherAssignmentsService } from '../teachers/teacher-assignments.service';
 
@@ -30,11 +30,34 @@ export type ContentScope = 'all' | string[];
 export class ActorContentScopeService {
   constructor(
     private readonly entitlements: ContentEntitlementsService,
-    private readonly enrollments: EnrollmentsService,
+    private readonly enrollments: EnrollmentLookupService,
     private readonly teacherAssignments: TeacherAssignmentsService,
   ) {}
 
+  // AUTHORIZATION scope: everything the actor may open. Policies, single-resource reads
+  // and playback go through this (via `includes`). For a STUDENT it spans every class
+  // they are actively enrolled in, so a task or notification for one class still opens
+  // while another class is selected, and a teacher's reachability check on task create
+  // does not depend on which class the student happens to have open.
   async resolve(actor: ActorScope): Promise<ContentScope> {
+    return this.resolveWith(actor, async (userId) => this.enrollments.activeGradeLevelIdsFor(userId));
+  }
+
+  // PRESENTATION scope: what browse surfaces (library lists, tree, search, history,
+  // bookmarks, home) show. Identical to `resolve` except that a STUDENT is narrowed to
+  // the grade of the class they are currently in. Always a subset of `resolve`, so
+  // nothing a list shows can be refused when opened.
+  async resolveBrowse(actor: ActorScope): Promise<ContentScope> {
+    return this.resolveWith(actor, async (userId) => {
+      const gradeLevelId = await this.enrollments.currentGradeLevelIdFor(userId);
+      return gradeLevelId ? [gradeLevelId] : [];
+    });
+  }
+
+  private async resolveWith(
+    actor: ActorScope,
+    studentGradeLevelIds: (userId: string) => Promise<string[]>,
+  ): Promise<ContentScope> {
     if (actor.role === Role.SUPER_ADMIN) {
       return 'all';
     }
@@ -44,19 +67,19 @@ export class ActorContentScopeService {
     // list is already narrowed to PUBLISHED curricula.
     const entitled = await this.entitlements.listEntitledCurricula();
 
-    // A student sees only their enrolled section's grade level, intersected with the
+    // A student sees only their enrolled sections' grade levels, intersected with the
     // school's entitlements. No active enrollment means no content — failing open here
     // would hand an unplaced student the whole school library.
     if (actor.role === Role.STUDENT) {
-      const gradeLevelId = await this.enrollments.activeGradeLevelIdFor(actor.userId);
-      if (!gradeLevelId) {
+      const gradeLevelIds = new Set(await studentGradeLevelIds(actor.userId));
+      if (gradeLevelIds.size === 0) {
         return [];
       }
       return entitled
         .filter(
           (curriculum) =>
             curriculum.audience === ContentAudience.STUDENT &&
-            curriculum.gradeLevelId === gradeLevelId,
+            gradeLevelIds.has(curriculum.gradeLevelId),
         )
         .map((curriculum) => curriculum.curriculumId);
     }

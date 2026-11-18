@@ -13,6 +13,18 @@ export const TENANT_SCOPED_MODELS = [
   'Section',
   'Enrollment',
   'StudentImportBatch',
+  'ResourceActivity',
+  'Bookmark',
+  'Collection',
+  'Task',
+  'TaskAssignment',
+  'TaskReminder',
+  'Notification',
+  'NotificationPreference',
+  'DeviceToken',
+  'SchoolAcademicCalendar',
+  'SchoolAcademicCalendarEntry',
+  'SchoolAcademicCalendarSetting',
 ] as const satisfies readonly Prisma.ModelName[];
 
 // Platform content: authored once for the whole platform, carries no `schoolId`, and
@@ -35,6 +47,11 @@ export const PLATFORM_GLOBAL_MODELS = [
   // Hangs off Video and inherits its globalness — a rendition is one encode of platform
   // content, not something a school owns.
   'VideoRendition',
+  // The academic calendar spine and the SUPER_ADMIN's default plans. A school reaches a
+  // default only for a (grade, subject) it holds a published curriculum entitlement for.
+  'AcademicYear',
+  'PlatformAcademicCalendar',
+  'PlatformAcademicCalendarEntry',
 ] as const satisfies readonly Prisma.ModelName[];
 
 export type TenantScopedModel = (typeof TENANT_SCOPED_MODELS)[number];
